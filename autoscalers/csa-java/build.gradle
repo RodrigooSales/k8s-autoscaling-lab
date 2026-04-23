@@ -1,0 +1,25 @@
+plugins {
+    id 'application'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+
+    implementation 'com.google.code.gson:gson:2.13.2'
+    implementation 'io.kubernetes:client-java:26.0.0'
+    implementation 'org.yaml:snakeyaml:2.6'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    mainClass = 'org.csajava.App'
+}

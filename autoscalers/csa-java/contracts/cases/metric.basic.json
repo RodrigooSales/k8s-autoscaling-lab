@@ -1,0 +1,45 @@
+{
+  "id": "metric.basic",
+  "mode": "metric",
+  "pythonScript": "autoscalers/csa/scripts/metric_nginx_req_duration.py",
+  "stdin": {
+    "resource": {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "kubernetesMetrics": [
+      {
+        "spec": {
+          "external": {
+            "metric": {
+              "name": "znn_latency_ms_p95"
+            },
+            "target": {
+              "type": "Value",
+              "value": "1000"
+            }
+          }
+        },
+        "external": {
+          "current": {
+            "value": "1300000"
+          }
+        }
+      }
+    ]
+  },
+  "stdout": {
+    "current_replicas": 2,
+    "target_value": "1000",
+    "current_value": "1300000"
+  },
+  "implicitInput": {},
+  "notes": "Base contract for metric stage. Output is forwarded to evaluate via metrics[0].value."
+}

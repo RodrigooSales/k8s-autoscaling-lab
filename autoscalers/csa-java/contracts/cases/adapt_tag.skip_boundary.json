@@ -1,0 +1,33 @@
+{
+  "id": "adapt_tag.skip_boundary",
+  "mode": "adapt_tag",
+  "pythonScript": "autoscalers/csa/scripts/adapt_tag.py",
+  "stdin": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "evaluation": {
+      "strategy": "adapt_tag",
+      "parameters": {
+        "tag_up": false
+      }
+    }
+  },
+  "stdout": {
+    "result": "skip"
+  },
+  "implicitInput": {
+    "kubernetesState": {
+      "rollout_in_progress": false,
+      "container_znn_image": "registry.k8s.lab/kube-znn:100k",
+      "stored_initial_tag": "600k"
+    }
+  },
+  "notes": "Current tag is lower boundary. tag_up=false has no adjacent tag, so adaptation skips."
+}

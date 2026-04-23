@@ -1,0 +1,45 @@
+{
+  "id": "evaluate.high_load_tag_fallback",
+  "mode": "evaluate",
+  "pythonScript": "autoscalers/csa/scripts/evaluate.py",
+  "stdin": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "metrics": [
+      {
+        "name": "metric_nginx_req_duration",
+        "value": "{\"current_replicas\":2,\"target_value\":\"1000\",\"current_value\":\"1300000\"}"
+      }
+    ]
+  },
+  "stdout": {
+    "strategy": "adapt_tag",
+    "parameters": {
+      "tag_up": false,
+      "update_cpu": true
+    }
+  },
+  "implicitInput": {
+    "config": {
+      "enabled_strategies": [
+        "adapt_cpu",
+        "adapt_tag"
+      ],
+      "minReplicas": 1,
+      "maxReplicas": 5,
+      "maxCPU": 1000
+    },
+    "kubernetesState": {
+      "current_mcpu": 1000,
+      "initial_mcpu": 500
+    }
+  },
+  "notes": "rate=1.3 and CPU is saturated at maxCPU, so evaluate falls back to tag strategy with update_cpu=true."
+}

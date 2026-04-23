@@ -1,0 +1,31 @@
+{
+  "id": "adapt_tag.skip_rollout",
+  "mode": "adapt_tag",
+  "pythonScript": "autoscalers/csa/scripts/adapt_tag.py",
+  "stdin": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "evaluation": {
+      "strategy": "adapt_tag",
+      "parameters": {
+        "tag_up": true
+      }
+    }
+  },
+  "stdout": {
+    "result": "skip"
+  },
+  "implicitInput": {
+    "kubernetesState": {
+      "rollout_in_progress": true
+    }
+  },
+  "notes": "Tag adaptation is skipped while rollout is in progress."
+}

@@ -1,0 +1,37 @@
+{
+  "id": "adapt_tag.success_down",
+  "mode": "adapt_tag",
+  "pythonScript": "autoscalers/csa/scripts/adapt_tag.py",
+  "stdin": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "evaluation": {
+      "strategy": "adapt_tag",
+      "parameters": {
+        "tag_up": false,
+        "update_cpu": true
+      }
+    }
+  },
+  "stdout": {
+    "tag": "400k"
+  },
+  "implicitInput": {
+    "kubernetesState": {
+      "rollout_in_progress": false,
+      "container_znn_image": "registry.k8s.lab/kube-znn:600k",
+      "stored_initial_tag": "600k",
+      "stored_initial_mcpu": 500,
+      "current_mcpu": 700,
+      "deployment_patch_success": true
+    }
+  },
+  "notes": "Moves one step down in TAGS and updates deployment."
+}

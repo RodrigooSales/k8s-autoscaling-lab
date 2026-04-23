@@ -1,0 +1,42 @@
+{
+  "id": "adapt_cpu.success",
+  "mode": "adapt_cpu",
+  "pythonScript": "autoscalers/csa/scripts/adapt_cpu.py",
+  "stdin": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "evaluation": {
+      "strategy": "adapt_cpu",
+      "parameters": {
+        "cpu_multiplier": 1.3
+      }
+    }
+  },
+  "stdout": {
+    "cpu": 650
+  },
+  "implicitInput": {
+    "config": {
+      "maxCPU": 1000
+    },
+    "kubernetesState": {
+      "rollout_in_progress": false,
+      "spec_mcpu": 500,
+      "stored_initial_mcpu": 500,
+      "current_mcpu": 500,
+      "pods": [
+        "kube-znn-abcde",
+        "kube-znn-fghij"
+      ],
+      "pod_resize_success": true
+    }
+  },
+  "notes": "new_mcpu = round(500 * 1.3) = 650, then patch pods/resize for znn and nginx containers."
+}

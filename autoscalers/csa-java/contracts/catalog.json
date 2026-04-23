@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "source": "autoscalers/csa/scripts",
+  "cases": [
+    "cases/metric.basic.json",
+    "cases/evaluate.high_load_cpu.json",
+    "cases/evaluate.high_load_tag_fallback.json",
+    "cases/evaluate.low_load_cpu.json",
+    "cases/evaluate.low_load_tag_fallback.json",
+    "cases/adapt_replicas.success.json",
+    "cases/adapt_cpu.success.json",
+    "cases/adapt_cpu.skip_rollout.json",
+    "cases/adapt_cpu.error_invalid_parameter.json",
+    "cases/adapt_tag.success_down.json",
+    "cases/adapt_tag.skip_rollout.json",
+    "cases/adapt_tag.skip_boundary.json"
+  ]
+}

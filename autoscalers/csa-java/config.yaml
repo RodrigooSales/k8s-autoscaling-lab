@@ -1,0 +1,59 @@
+metric:
+  type: "shell"
+  timeout: 1000
+  shell:
+    entrypoint: "/bin/sh"
+    command:
+      - "-c"
+      - "/app/csa-java/bin/csa-java -m metric"
+    logStderr: true
+evaluate:
+  type: "shell"
+  timeout: 2000
+  shell:
+    entrypoint: "/bin/sh"
+    command:
+      - "-c"
+      - "/app/csa-java/bin/csa-java -m evaluate"
+adapt:
+  adapt_replicas:
+    type: "shell"
+    timeout: 2000
+    shell:
+      entrypoint: "/bin/sh"
+      command:
+        - "-c"
+        - "/app/csa-java/bin/csa-java -m adapt_replicas"
+  adapt_tag:
+    type: "shell"
+    timeout: 2000
+    shell:
+      entrypoint: "/bin/sh"
+      command:
+        - "-c"
+        - "/app/csa-java/bin/csa-java -m adapt_tag"
+  adapt_cpu:
+    type: "shell"
+    timeout: 2000
+    shell:
+      entrypoint: "/bin/sh"
+      command:
+        - "-c"
+        - "/app/csa-java/bin/csa-java -m adapt_cpu"
+interval: 5000
+minReplicas: 1
+maxReplicas: 5
+maxCPU: 1000
+kubernetesMetricSpecs:
+  - type: External
+    external:
+      metric:
+        name: znn_latency_ms_p95
+      target:
+        type: Value
+        value: 1000
+enabled_strategies:
+  - adapt_cpu
+  - adapt_tag
+requireKubernetesMetrics: true
+logVerbosity: 4

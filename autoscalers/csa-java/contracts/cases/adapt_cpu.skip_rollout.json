@@ -1,0 +1,31 @@
+{
+  "id": "adapt_cpu.skip_rollout",
+  "mode": "adapt_cpu",
+  "pythonScript": "autoscalers/csa/scripts/adapt_cpu.py",
+  "stdin": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "evaluation": {
+      "strategy": "adapt_cpu",
+      "parameters": {
+        "cpu_multiplier": 1.1
+      }
+    }
+  },
+  "stdout": {
+    "result": "skip"
+  },
+  "implicitInput": {
+    "kubernetesState": {
+      "rollout_in_progress": true
+    }
+  },
+  "notes": "CPU adaptation is skipped while deployment rollout is in progress."
+}

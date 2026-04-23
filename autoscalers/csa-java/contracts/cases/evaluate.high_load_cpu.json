@@ -1,0 +1,44 @@
+{
+  "id": "evaluate.high_load_cpu",
+  "mode": "evaluate",
+  "pythonScript": "autoscalers/csa/scripts/evaluate.py",
+  "stdin": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "metrics": [
+      {
+        "name": "metric_nginx_req_duration",
+        "value": "{\"current_replicas\":2,\"target_value\":\"1000\",\"current_value\":\"1300000\"}"
+      }
+    ]
+  },
+  "stdout": {
+    "strategy": "adapt_cpu",
+    "parameters": {
+      "cpu_multiplier": 1.3
+    }
+  },
+  "implicitInput": {
+    "config": {
+      "enabled_strategies": [
+        "adapt_cpu",
+        "adapt_tag"
+      ],
+      "minReplicas": 1,
+      "maxReplicas": 5,
+      "maxCPU": 1000
+    },
+    "kubernetesState": {
+      "current_mcpu": 500,
+      "initial_mcpu": 500
+    }
+  },
+  "notes": "rate=1.3. Replicas strategy disabled in config. CPU selected first when current_mcpu < maxCPU."
+}

@@ -1,0 +1,31 @@
+{
+  "id": "adapt_replicas.success",
+  "mode": "adapt_replicas",
+  "pythonScript": "autoscalers/csa/scripts/adapt_replicas.py",
+  "stdin": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "evaluation": {
+      "strategy": "adapt_replicas",
+      "parameters": {
+        "replicas": 3
+      }
+    }
+  },
+  "stdout": {
+    "replicas": 3
+  },
+  "implicitInput": {
+    "kubernetesState": {
+      "deployment_patch_success": true
+    }
+  },
+  "notes": "Happy path for replica patch."
+}
