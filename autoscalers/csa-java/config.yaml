@@ -9,7 +9,7 @@ metric:
     logStderr: true
 evaluate:
   type: "shell"
-  timeout: 2000
+  timeout: 5000
   shell:
     entrypoint: "/bin/sh"
     command:
@@ -18,7 +18,7 @@ evaluate:
 adapt:
   adapt_replicas:
     type: "shell"
-    timeout: 2000
+    timeout: 5000
     shell:
       entrypoint: "/bin/sh"
       command:
@@ -26,7 +26,7 @@ adapt:
         - "/app/csa-java/bin/csa-java -m adapt_replicas"
   adapt_tag:
     type: "shell"
-    timeout: 2000
+    timeout: 5000
     shell:
       entrypoint: "/bin/sh"
       command:
@@ -34,7 +34,7 @@ adapt:
         - "/app/csa-java/bin/csa-java -m adapt_tag"
   adapt_cpu:
     type: "shell"
-    timeout: 2000
+    timeout: 5000
     shell:
       entrypoint: "/bin/sh"
       command:
@@ -53,7 +53,6 @@ kubernetesMetricSpecs:
         type: Value
         value: 1000
 enabled_strategies:
-  - adapt_cpu
-  - adapt_tag
+  - adapt_replicas
 requireKubernetesMetrics: true
 logVerbosity: 4

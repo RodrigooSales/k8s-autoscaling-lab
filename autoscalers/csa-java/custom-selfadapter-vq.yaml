@@ -10,7 +10,7 @@ spec:
         autoscaling.lab/adaptation: "yes"
       containers:
         - name: csa-znn
-          image: registry.k8s.lab/csa-znn:vq
+          image: registry.k8s.lab/csa-znn-java:vq
           imagePullPolicy: Always
           resources:
             requests:
