@@ -12,8 +12,14 @@
 # - csa horizontal + tag quality
 #   - kube-znn:800k rollingUpdate maxSurge=25% & maxUnavailable=25%
 #   - kube-znn:800k rollingUpdate maxSurge=50% & maxUnavailable=50%
+# - csa-java horizontal
+#   - kube-znn:800k
+# - csa-java horizontal + tag quality
+#   - kube-znn:800k rollingUpdate maxSurge=25% & maxUnavailable=25%
+#   - kube-znn:800k rollingUpdate maxSurge=50% & maxUnavailable=50%
 # - vpa
 # - csa vertical + tag quality
+# - csa-java vertical + tag quality
 # sleeps for a minute between locust executions
 
 run_test_suite() {
@@ -146,6 +152,65 @@ run_test_suite() {
     sleep 5
     PROM_EXTRACT_NAME=${ITERATION}_6_csa_vq locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
     kubectl delete -f autoscalers/csa/custom-selfadapter-vq.yaml
+    sleep 60
+
+    echo "####################################"
+    echo "#       Starting CSA Java H        #"
+    echo "####################################"
+    
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
+    kubectl apply -f autoscalers/csa-java/custom-selfadapter-h.yaml
+    sleep 5
+    PROM_EXTRACT_NAME=${ITERATION}_3_csa_java_h locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    sleep 60
+    kubectl delete -f autoscalers/csa-java/custom-selfadapter-h.yaml
+    
+    echo "####################################"
+    echo "#    Starting CSA Java HQ 25%      #"
+    echo "####################################"
+    
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
+    kubectl scale deployment kube-znn --replicas 1
+    kubectl patch deployment kube-znn --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":"25%","maxSurge":"25%"}}}}'
+    kubectl apply -f autoscalers/csa-java/custom-selfadapter-hq.yaml
+    sleep 5
+    PROM_EXTRACT_NAME=${ITERATION}_3_csa_java_hq_25 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    sleep 60
+    
+    echo "####################################"
+    echo "#    Starting CSA Java HQ 50%      #"
+    echo "####################################"
+    
+    kubectl patch deployment kube-znn --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":"50%","maxSurge":"50%"}}}}'
+    sleep 5
+    PROM_EXTRACT_NAME=${ITERATION}_3_csa_java_hq_50 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    sleep 60
+    kubectl delete -f autoscalers/csa-java/custom-selfadapter-hq.yaml
+    
+    echo "####################################"
+    echo "#       Starting CSA Java V        #"
+    echo "####################################"
+    
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
+    kubectl apply -f autoscalers/csa-java/custom-selfadapter-v.yaml
+    sleep 5
+    PROM_EXTRACT_NAME=${ITERATION}_6_csa_java_v locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    kubectl delete -f autoscalers/csa-java/custom-selfadapter-v.yaml
+    sleep 60
+    
+    echo "####################################"
+    echo "#      Starting CSA Java V+Q       #"
+    echo "####################################"
+    
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
+    kubectl apply -f autoscalers/csa-java/custom-selfadapter-vq.yaml
+    sleep 5
+    PROM_EXTRACT_NAME=${ITERATION}_6_csa_java_vq locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    kubectl delete -f autoscalers/csa-java/custom-selfadapter-vq.yaml
     sleep 60
 }
 

@@ -6,12 +6,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.ApiClient;
+import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import io.kubernetes.client.openapi.models.V1Deployment;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.util.Config;
+import io.kubernetes.client.util.PatchUtils;
 import java.util.List;
 import org.csajava.context.RuntimeContext;
 import org.csajava.runtime.adapt.AdaptSupport;
@@ -128,13 +130,32 @@ public final class AdaptCpuRuntime {
                 if (pod == null || pod.getMetadata() == null || pod.getMetadata().getName() == null) {
                     return AdaptSupport.error();
                 }
-                core.patchNamespacedPodResize(pod.getMetadata().getName(), namespace, resizePatch).execute();
+                resizePod(core, client, pod.getMetadata().getName(), namespace, resizePatch);
             }
 
             return AdaptSupport.cpu(newMcpu);
+        } catch (ApiException e) {
+            return AdaptSupport.error(apiErrorMessage(e));
         } catch (Exception e) {
-            return AdaptSupport.error();
+            return AdaptSupport.error(e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage()));
         }
+    }
+
+    static V1Pod resizePod(CoreV1Api core, ApiClient client, String name, String namespace, V1Patch patch)
+            throws ApiException {
+        return PatchUtils.patch(
+                V1Pod.class,
+                () -> core.patchNamespacedPodResize(name, namespace, patch).buildCall(null),
+                V1Patch.PATCH_FORMAT_STRATEGIC_MERGE_PATCH,
+                client);
+    }
+
+    private static String apiErrorMessage(ApiException error) {
+        String responseBody = error.getResponseBody();
+        if (responseBody == null || responseBody.isBlank()) {
+            responseBody = error.getMessage();
+        }
+        return "Kubernetes API error " + error.getCode() + ": " + String.valueOf(responseBody);
     }
 
     static int adjustedMcpu(int currentMcpu, double multiplier, int initialMcpu, int maxCpu) {

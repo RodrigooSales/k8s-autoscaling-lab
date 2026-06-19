@@ -8,6 +8,7 @@ import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import io.kubernetes.client.openapi.models.V1Pod;
+import io.kubernetes.client.util.PatchUtils;
 import java.util.HashMap;
 import java.util.Map;
 import org.csajava.context.RuntimeContext;
@@ -145,10 +146,19 @@ public final class InitialDataStore {
             metadata.add("annotations", annotations);
             patch.add("metadata", metadata);
 
-            core.patchNamespacedPod(csaName, csaNamespace, new V1Patch(GSON.toJson(patch))).execute();
+            patchPodAnnotation(core, csaName, csaNamespace, new V1Patch(GSON.toJson(patch)));
         } catch (ApiException e) {
             // Best effort only. Runtime logic continues even if annotation patch fails.
         }
+    }
+
+    static V1Pod patchPodAnnotation(CoreV1Api core, String name, String namespace, V1Patch patch)
+            throws ApiException {
+        return PatchUtils.patch(
+                V1Pod.class,
+                () -> core.patchNamespacedPod(name, namespace, patch).buildCall(null),
+                V1Patch.PATCH_FORMAT_STRATEGIC_MERGE_PATCH,
+                core.getApiClient());
     }
 
     @SuppressWarnings("unchecked")

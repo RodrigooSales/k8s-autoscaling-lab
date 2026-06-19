@@ -210,6 +210,12 @@ public final class AdaptSupport {
         return result("error");
     }
 
+    public static JsonObject error(String message) {
+        JsonObject out = error();
+        out.addProperty("message", message);
+        return out;
+    }
+
     public static JsonObject skip() {
         return result("skip");
     }

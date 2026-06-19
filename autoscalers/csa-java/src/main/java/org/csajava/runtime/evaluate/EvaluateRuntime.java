@@ -7,6 +7,7 @@ import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import io.kubernetes.client.openapi.models.V1Container;
 import io.kubernetes.client.openapi.models.V1Deployment;
 import io.kubernetes.client.openapi.models.V1DeploymentSpec;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import org.csajava.context.RuntimeContext;
 import org.csajava.model.ResultError;
+import org.csajava.runtime.initialdata.InitialDataStore;
 import org.csajava.util.CpuQuantity;
 import org.csajava.util.JsonUtil;
 import org.csajava.util.YamlMap;
@@ -259,6 +261,7 @@ public final class EvaluateRuntime {
             ApiClient client = Config.fromCluster();
             AppsV1Api apps = new AppsV1Api(client);
             CoreV1Api core = new CoreV1Api(client);
+            CustomObjectsApi customObjects = new CustomObjectsApi(client);
 
             V1Deployment deployment = apps.readNamespacedDeployment(name, namespace).execute();
             if (deployment == null) {
@@ -266,7 +269,12 @@ public final class EvaluateRuntime {
             }
 
             Integer currentMcpu = readCurrentMcpu(core, namespace, deployment);
-            Integer initialMcpu = readSpecMcpu(deployment);
+            InitialDataStore store = new InitialDataStore(context, core, customObjects);
+            Integer initialMcpu = store.getStoredCpuLimit();
+            if (initialMcpu == null || initialMcpu <= 0) {
+                initialMcpu = readSpecMcpu(deployment);
+                store.storeCpuLimit(initialMcpu);
+            }
 
             return Map.of(
                     "current_mcpu", currentMcpu == null ? 0 : currentMcpu,
