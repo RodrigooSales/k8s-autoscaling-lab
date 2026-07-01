@@ -7,17 +7,21 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Map;
+import org.csajava.cli.Mode;
+import org.csajava.context.RuntimeContext;
 import org.junit.Test;
 import org.csajava.runtime.adapt.cpu.AdaptCpuRuntime;
 import org.csajava.runtime.adapt.replicas.AdaptReplicasRuntime;
 import org.csajava.runtime.adapt.tag.AdaptTagRuntime;
-import org.csajava.context.RuntimeContext;
 import org.csajava.runtime.evaluate.EvaluateRuntime;
 import org.csajava.runtime.metric.MetricRuntime;
 
@@ -55,6 +59,14 @@ public class ContractParityTest {
     @Test
     public void evaluateLowLoadTagFallbackContract() throws IOException {
         assertEvaluateCase("evaluate.low_load_tag_fallback");
+    }
+
+    @Test
+    public void evaluateNoAdaptationProducesNoStdout() throws IOException {
+        RuntimeContext context = contextFromFixture(readNoAdaptationFixture());
+
+        assertEquals(null, EvaluateRuntime.evaluate(context));
+        assertEquals("", stdoutFromEvaluateHandler(context));
     }
 
     @Test
@@ -159,5 +171,56 @@ public class ContractParityTest {
 
     private static JsonElement asJson(Object value) {
         return GSON.toJsonTree(value);
+    }
+
+    private static JsonObject readNoAdaptationFixture() {
+        return JsonParser.parseString("""
+                {
+                  "stdin": {
+                    "resource": {
+                      "metadata": {
+                        "name": "kube-znn",
+                        "namespace": "default"
+                      },
+                      "spec": {
+                        "replicas": 2
+                      }
+                    },
+                    "metrics": [
+                      {
+                        "name": "metric_nginx_req_duration",
+                        "value": "{\\"current_replicas\\":2,\\"target_value\\":\\"1000\\",\\"current_value\\":\\"920000\\"}"
+                      }
+                    ]
+                  },
+                  "implicitInput": {
+                    "config": {
+                      "enabled_strategies": [
+                        "adapt_cpu",
+                        "adapt_tag"
+                      ],
+                      "minReplicas": 1,
+                      "maxReplicas": 5,
+                      "maxCPU": 1000
+                    },
+                    "kubernetesState": {
+                      "current_mcpu": 500,
+                      "initial_mcpu": 500
+                    }
+                  }
+                }
+                """).getAsJsonObject();
+    }
+
+    private static String stdoutFromEvaluateHandler(RuntimeContext context) {
+        ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        try (PrintStream replacement = new PrintStream(stdout, true, StandardCharsets.UTF_8)) {
+            System.setOut(replacement);
+            ModeHandlers.forMode(Mode.EVALUATE).handle(context);
+        } finally {
+            System.setOut(originalOut);
+        }
+        return stdout.toString(StandardCharsets.UTF_8);
     }
 }

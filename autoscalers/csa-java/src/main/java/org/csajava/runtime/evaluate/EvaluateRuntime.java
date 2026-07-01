@@ -113,7 +113,7 @@ public final class EvaluateRuntime {
             }
         }
 
-        return new ResultError("skip", "No adaptation selected");
+        return null;
     }
 
     private static JsonObject extractMetricPayload(JsonObject stdin) {

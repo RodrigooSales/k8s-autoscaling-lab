@@ -19,7 +19,12 @@ public final class ModeHandlers {
 
         return switch (mode) {
             case METRIC -> context -> JsonOut.write(MetricRuntime.evaluate(context));
-            case EVALUATE -> context -> JsonOut.write(EvaluateRuntime.evaluate(context));
+            case EVALUATE -> context -> {
+                Object result = EvaluateRuntime.evaluate(context);
+                if (result != null) {
+                    JsonOut.write(result);
+                }
+            };
             case ADAPT_REPLICAS -> context -> JsonOut.write(AdaptReplicasRuntime.evaluate(context));
             case ADAPT_TAG -> context -> JsonOut.write(AdaptTagRuntime.evaluate(context));
             case ADAPT_CPU -> context -> JsonOut.write(AdaptCpuRuntime.evaluate(context));
