@@ -139,10 +139,12 @@ public final class InitialDataStore {
                 return;
             }
 
+            Map<String, String> mergedValue = mergeSelfPodAnnotation(selfPod, value);
+
             JsonObject patch = new JsonObject();
             JsonObject metadata = new JsonObject();
             JsonObject annotations = new JsonObject();
-            annotations.addProperty(ANNOTATION_TAG, GSON.toJson(value));
+            annotations.addProperty(ANNOTATION_TAG, GSON.toJson(mergedValue));
             metadata.add("annotations", annotations);
             patch.add("metadata", metadata);
 
@@ -194,8 +196,25 @@ public final class InitialDataStore {
         }
     }
 
+    static Map<String, String> mergeSelfPodAnnotation(V1Pod selfPod, Map<String, String> value) {
+        Map<String, String> merged = new HashMap<>();
+        if (selfPod != null && selfPod.getMetadata() != null && selfPod.getMetadata().getAnnotations() != null) {
+            Map<String, Object> annotationData =
+                    parseInitialData(selfPod.getMetadata().getAnnotations().get(ANNOTATION_TAG));
+            for (Map.Entry<String, Object> entry : annotationData.entrySet()) {
+                if (entry.getValue() != null) {
+                    merged.put(entry.getKey(), String.valueOf(entry.getValue()));
+                }
+            }
+        }
+        if (value != null) {
+            merged.putAll(value);
+        }
+        return merged;
+    }
+
     @SuppressWarnings("unchecked")
-    private Map<String, Object> parseInitialData(Object raw) {
+    private static Map<String, Object> parseInitialData(Object raw) {
         if (raw == null) {
             return Map.of();
         }

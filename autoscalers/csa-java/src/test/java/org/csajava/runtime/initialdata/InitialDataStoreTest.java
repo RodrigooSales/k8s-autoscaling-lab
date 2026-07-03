@@ -5,6 +5,9 @@ import static org.junit.Assert.assertEquals;
 import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import io.kubernetes.client.openapi.models.V1Pod;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -15,6 +18,20 @@ import okhttp3.ResponseBody;
 import org.junit.Test;
 
 public class InitialDataStoreTest {
+    @Test
+    public void mergeSelfPodAnnotationPreservesExistingInitialData() {
+        V1Pod pod = new V1Pod().metadata(new V1ObjectMeta()
+                .annotations(Map.of(
+                        "csa.custom-self-adapter.net/initialData",
+                        "{\"tag\":\"600k\",\"cpu_limit\":\"250\"}")));
+
+        Map<String, String> merged = InitialDataStore.mergeSelfPodAnnotation(
+                pod, Map.of("cpu_limit", "500"));
+
+        assertEquals("600k", merged.get("tag"));
+        assertEquals("500", merged.get("cpu_limit"));
+    }
+
     @Test
     public void podAnnotationUsesStrategicMergePatch() throws Exception {
         AtomicReference<Request> captured = new AtomicReference<>();
