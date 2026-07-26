@@ -12,6 +12,12 @@ from plot_comparison_common import (
     CONFIGURATION_COLORS,
     sort_configurations,
 )
+from plot_helper import MetricSpec
+
+
+AXIS_TITLE_FONT_SIZE = 16
+AXIS_TICK_FONT_SIZE = 12
+LEGEND_ITEM_FONT_SIZE = 12
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--show",
         action="store_true",
         help="Abre a figura interativamente alem de salvar o arquivo.",
+    )
+    parser.add_argument(
+        "--plot-metrics",
+        default="pods_mean,cpu_limits_mean,response_time_mean,response_size_mean,success_rate,slo_breach_success_rate",
+        help="Metricas a serem plotadas separadas por virgula.",
     )
     return parser
 
@@ -79,17 +90,20 @@ def metric_upper_bound(metric_summary: pd.DataFrame, percent_axis: bool) -> floa
 
 
 def build_plot(
-    summary_df: pd.DataFrame, run_df: pd.DataFrame, output_path: Path
+    summary_df: pd.DataFrame,
+    run_df: pd.DataFrame,
+    output_path: Path,
+    metrics: list[MetricSpec] = COMPARISON_METRICS,
 ) -> None:
     sns.set_theme(
         style="whitegrid",
         context="notebook",
         rc={
-            "axes.titlesize": 12,
+            "axes.titlesize": AXIS_TITLE_FONT_SIZE,
             "axes.labelsize": 10,
-            "xtick.labelsize": 9,
-            "ytick.labelsize": 9,
-            "legend.fontsize": 9,
+            "xtick.labelsize": AXIS_TICK_FONT_SIZE,
+            "ytick.labelsize": AXIS_TICK_FONT_SIZE,
+            "legend.fontsize": LEGEND_ITEM_FONT_SIZE,
             "savefig.dpi": 300,
         },
     )
@@ -113,10 +127,11 @@ def build_plot(
         mean_df["configuration"], categories=configuration_order, ordered=True
     )
 
-    fig, axes = plt.subplots(3, 2, figsize=(11, 16), sharex=True, layout="constrained")
+    num_rows = len(metrics) // 2 + len(metrics) % 2
+    fig, axes = plt.subplots(num_rows, 2, figsize=(11, 5*num_rows), sharex=True, layout="constrained")
     axes = axes.flatten()
 
-    for idx, metric in enumerate(COMPARISON_METRICS):
+    for idx, metric in enumerate(metrics):
         ax = axes[idx]
         metric_df = plot_df[plot_df["metric"] == metric.key]
         metric_means = mean_df[mean_df["metric"] == metric.key]
@@ -250,7 +265,13 @@ def main() -> None:
 
     summary_df = pd.read_csv(summary_path)
     run_df = pd.read_csv(runs_path).sort_values(["order", "run", "configuration"])
-    build_plot(summary_df, run_df, output_path)
+
+    print(args.plot_metrics)
+    metrics = [metric
+        for metric in COMPARISON_METRICS
+        if metric.key in args.plot_metrics.split(",")
+    ]
+    build_plot(summary_df, run_df, output_path, metrics=metrics)
 
     print(f"Arquivos analisados: {len(run_df)}")
     print(f"Grafico salvo em: {output_path}")
