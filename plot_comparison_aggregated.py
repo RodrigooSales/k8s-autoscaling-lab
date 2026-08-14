@@ -7,7 +7,7 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.lines import Line2D
 
-from plot_comparison_common import COMPARISON_METRICS
+from plot_comparison_common import COMPARISON_METRICS, CONFIGURATION_COLORS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -97,7 +97,8 @@ def build_plot(
     configuration_labels = configurations["label"].tolist()
     palette_colors = sns.color_palette("Set2", n_colors=len(configurations))
     configuration_palette = {
-        configuration: palette_colors[idx] for idx, configuration in enumerate(configuration_order)
+        configuration: CONFIGURATION_COLORS.get(configuration, palette_colors[idx])
+        for idx, configuration in enumerate(configuration_order)
     }
     mean_df = (
         plot_df.groupby(["metric", "configuration"], as_index=False, observed=False)[

@@ -8,10 +8,34 @@ CONFIGURATION_LABELS = {
     "csa_h": "CSA H",
     "csa_hq_25": "CSA HQ 25",
     "csa_hq_50": "CSA HQ 50",
+    "csa_java_h": "CSA Java H",
+    "csa_java_hq_25": "CSA Java HQ 25",
+    "csa_java_hq_50": "CSA Java HQ 50",
     "base_1500": "Base 1 Repl 1.5 CPU",
     "vpa": "VPA",
     "csa_v": "CSA V",
     "csa_vq": "CSA VQ",
+    "csa_java_v": "CSA Java V",
+    "csa_java_vq": "CSA Java VQ",
+}
+
+CONFIGURATION_COLORS = {
+    "base_1": "#4C78A8",
+    "base_5": "#72B7B2",
+    "base_1500": "#9ECAE9",
+    "hpa_std": "#F58518",
+    "hpa_fast": "#FFBF79",
+    "vpa": "#54A24B",
+    "csa_h": "#E45756",
+    "csa_hq_25": "#D62728",
+    "csa_hq_50": "#FF7F7F",
+    "csa_v": "#B22222",
+    "csa_vq": "#FB6A4A",
+    "csa_java_h": "#7B61FF",
+    "csa_java_hq_25": "#9467BD",
+    "csa_java_hq_50": "#C5B0D5",
+    "csa_java_v": "#6A3D9A",
+    "csa_java_vq": "#B279A2",
 }
 
 COMPARISON_METRICS = [
@@ -26,5 +50,4 @@ COMPARISON_METRICS = [
         percent_axis=True,
     ),
 ]
-
 

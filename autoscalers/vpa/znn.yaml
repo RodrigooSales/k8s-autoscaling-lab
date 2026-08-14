@@ -8,7 +8,7 @@ spec:
     kind: Deployment
     name: kube-znn
   updatePolicy:
-    updateMode: InPlaceOrRecreate
+    updateMode: Recreate
     minReplicas: 1
   resourcePolicy:
     containerPolicies:

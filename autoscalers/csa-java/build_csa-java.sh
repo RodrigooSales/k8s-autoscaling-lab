@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export IMAGE="registry.k8s.lab/csa-znn-java"
-export TAG="h"
+export TAG="vq"
 
 docker build -t $IMAGE:$TAG .
 docker push $IMAGE:$TAG
