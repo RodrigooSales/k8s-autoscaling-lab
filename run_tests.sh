@@ -173,11 +173,14 @@ run_test_suite() {
     echo "#    Starting CSA Java HQ 50%      #"
     echo "####################################"
     
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
     kubectl patch deployment kube-znn --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":"50%","maxSurge":"50%"}}}}'
+    kubectl apply -f autoscalers/csa-java/custom-selfadapter-hq.yaml
     sleep 5
     PROM_EXTRACT_NAME=${ITERATION}_3_csa_java_hq_50 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
-    sleep 60
     kubectl delete -f autoscalers/csa-java/custom-selfadapter-hq.yaml
+    sleep 60
 
     echo "####################################"
     echo "#      Starting Base CPU 1500m     #"
