@@ -25,7 +25,12 @@ public final class ModeHandlers {
                     JsonOut.write(result);
                 }
             };
-            case ADAPT_REPLICAS -> context -> JsonOut.write(AdaptReplicasRuntime.evaluate(context));
+            case ADAPT_REPLICAS -> context -> {
+                Object result = AdaptReplicasRuntime.evaluate(context);
+                if (result != null) {
+                    JsonOut.write(result);
+                }
+            };
             case ADAPT_TAG -> context -> JsonOut.write(AdaptTagRuntime.evaluate(context));
             case ADAPT_CPU -> context -> JsonOut.write(AdaptCpuRuntime.evaluate(context));
         };
