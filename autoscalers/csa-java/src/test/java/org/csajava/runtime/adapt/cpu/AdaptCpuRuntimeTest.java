@@ -16,6 +16,12 @@ import org.junit.Test;
 
 public class AdaptCpuRuntimeTest {
     @Test
+    public void roundsHalfToEvenLikePython() {
+        assertEquals(154, AdaptCpuRuntime.adjustedMcpu(103, 1.5, 1, 1000));
+        assertEquals(156, AdaptCpuRuntime.adjustedMcpu(311, 0.5, 1, 1000));
+    }
+
+    @Test
     public void resizePodUsesStrategicMergePatch() throws Exception {
         AtomicReference<Request> captured = new AtomicReference<>();
         OkHttpClient httpClient = new OkHttpClient.Builder()

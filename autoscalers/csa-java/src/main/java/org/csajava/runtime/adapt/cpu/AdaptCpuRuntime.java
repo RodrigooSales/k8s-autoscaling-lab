@@ -159,7 +159,7 @@ public final class AdaptCpuRuntime {
     }
 
     static int adjustedMcpu(int currentMcpu, double multiplier, int initialMcpu, int maxCpu) {
-        int newMcpu = (int) Math.round(currentMcpu * multiplier);
+        int newMcpu = (int) Math.rint(currentMcpu * multiplier);
         if (newMcpu > maxCpu) {
             newMcpu = maxCpu;
         }
