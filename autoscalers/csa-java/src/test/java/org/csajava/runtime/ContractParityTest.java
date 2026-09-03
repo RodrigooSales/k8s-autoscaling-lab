@@ -70,6 +70,28 @@ public class ContractParityTest {
     }
 
     @Test
+    public void evaluateStopsWhenCurrentCpuIsUnavailable() throws IOException {
+        JsonObject fixture = readFixture("evaluate.low_load_tag_fallback");
+        fixture.getAsJsonObject("implicitInput")
+                .getAsJsonObject("kubernetesState")
+                .remove("current_mcpu");
+
+        assertEquals(null, EvaluateRuntime.evaluate(contextFromFixture(fixture)));
+    }
+
+    @Test
+    public void evaluateUsesZeroBaselineDuringFirstCycle() throws IOException {
+        JsonObject fixture = readFixture("evaluate.low_load_tag_fallback");
+        fixture.getAsJsonObject("implicitInput")
+                .getAsJsonObject("kubernetesState")
+                .remove("initial_mcpu");
+
+        JsonObject result = asJson(EvaluateRuntime.evaluate(contextFromFixture(fixture))).getAsJsonObject();
+
+        assertEquals("adapt_cpu", result.get("strategy").getAsString());
+    }
+
+    @Test
     public void adaptReplicasSuccessContract() throws IOException {
         JsonObject fixture = readFixture("adapt_replicas.success");
         RuntimeContext context = contextFromFixture(fixture);

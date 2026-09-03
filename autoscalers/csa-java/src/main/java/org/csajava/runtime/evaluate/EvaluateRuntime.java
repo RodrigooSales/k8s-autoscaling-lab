@@ -21,7 +21,6 @@ import io.kubernetes.client.util.Config;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.csajava.context.RuntimeContext;
@@ -194,16 +193,11 @@ public final class EvaluateRuntime {
     }
 
     private static Map<String, Object> mapOf(String key, Object value) {
-        Map<String, Object> values = new LinkedHashMap<>();
-        values.put(key, value);
-        return values;
+        return Map.of(key, value);
     }
 
     private static Map<String, Object> mapOf(String key1, Object value1, String key2, Object value2) {
-        Map<String, Object> values = new LinkedHashMap<>();
-        values.put(key1, value1);
-        values.put(key2, value2);
-        return values;
+        return Map.of(key1, value1, key2, value2);
     }
 
     private static BigInteger parseQuantityInt(String raw) {
@@ -249,10 +243,6 @@ public final class EvaluateRuntime {
 
     private static Map<String, Object> resolveHints(RuntimeContext context, String name, String namespace) {
         if (!context.hints().isEmpty()) {
-            if (Boolean.TRUE.equals(YamlMap.bool(context.hints(), "kubernetes_error"))
-                    || Boolean.TRUE.equals(YamlMap.bool(context.hints(), "deployment_missing"))) {
-                throw new IllegalStateException("failed to resolve Kubernetes state");
-            }
             return context.hints();
         }
 

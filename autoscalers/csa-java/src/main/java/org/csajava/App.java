@@ -2,7 +2,9 @@ package org.csajava;
 
 import org.csajava.cli.Cli;
 import org.csajava.context.RuntimeContext;
+import org.csajava.io.JsonOut;
 import org.csajava.io.Stdin;
+import org.csajava.model.ResultError;
 import org.csajava.runtime.ModeHandler;
 import org.csajava.runtime.ModeHandlers;
 
@@ -11,34 +13,29 @@ public final class App {
     }
 
     public static void main(String[] args) {
-        int exitCode = run(args, "/config.yaml");
-        if (exitCode != 0) {
-            System.exit(exitCode);
-        }
-    }
-
-    static int run(String[] args, String configPath) {
         Cli cli = Cli.parse(args);
         if (!cli.isValid()) {
             System.err.println(cli.error());
-            return 2;
+            System.exit(2);
+            return;
         }
 
         try {
             String stdin = Stdin.readAll();
-            RuntimeContext context = RuntimeContext.load(configPath, stdin);
+            RuntimeContext context = RuntimeContext.load("/config.yaml", stdin);
             ModeHandler handler = ModeHandlers.forMode(cli.mode());
 
             if (handler == null) {
-                System.err.println("unsupported mode: " + cli.mode());
-                return 2;
+                JsonOut.write(new ResultError("error", "unsupported mode: " + cli.mode()));
+                System.exit(2);
+                return;
             }
 
             handler.handle(context);
-            return 0;
         } catch (RuntimeException e) {
-            e.printStackTrace(System.err);
-            return 1;
+            String message = e.getMessage() == null ? "runtime failure" : e.getMessage();
+            JsonOut.write(new ResultError("error", message));
+            System.exit(1);
         }
     }
 }

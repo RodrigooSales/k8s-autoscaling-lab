@@ -22,5 +22,3 @@ Notes:
   rollout status, current tag, current CPU limit, and patch success.
 - Fixtures are intentionally JSON only. They are easy to diff and automate.
 - Values are aligned with the current Python logic and config.
-- `MetricProcessParityTest` and `EvaluateDifferentialTest` complement these
-  fixtures by executing the real Python scripts as the test oracle.
