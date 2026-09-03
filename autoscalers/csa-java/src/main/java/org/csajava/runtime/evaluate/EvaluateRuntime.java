@@ -2,6 +2,7 @@ package org.csajava.runtime.evaluate;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
@@ -18,12 +19,12 @@ import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.openapi.models.V1ResourceRequirements;
 import io.kubernetes.client.util.Config;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.ArrayList;
+import java.math.BigInteger;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.csajava.context.RuntimeContext;
-import org.csajava.model.ResultError;
 import org.csajava.runtime.initialdata.InitialDataStore;
 import org.csajava.util.CpuQuantity;
 import org.csajava.util.JsonUtil;
@@ -39,6 +40,17 @@ public final class EvaluateRuntime {
     public static final String PARAM_UPDATE_CPU = "update_cpu";
 
     private static final Gson GSON = new Gson();
+    private static final Map<Character, Integer> QUANTITY_EXPONENTS = Map.of(
+            'n', -3,
+            'u', -2,
+            'm', -1,
+            'K', 1,
+            'k', 1,
+            'M', 2,
+            'G', 3,
+            'T', 4,
+            'P', 5,
+            'E', 6);
 
     private EvaluateRuntime() {
     }
@@ -49,66 +61,72 @@ public final class EvaluateRuntime {
         JsonObject resourceSpec = JsonUtil.object(resource, "spec");
         Integer currentReplicas = JsonUtil.integer(resourceSpec, "replicas");
         if (currentReplicas == null) {
-            return new ResultError("error", "missing resource.spec.replicas");
+            throw new IllegalArgumentException("missing resource.spec.replicas");
         }
 
         JsonObject resourceMetadata = JsonUtil.object(resource, "metadata");
         String deploymentName = JsonUtil.string(resourceMetadata, "name");
         String deploymentNamespace = JsonUtil.string(resourceMetadata, "namespace");
         if (deploymentName == null || deploymentNamespace == null) {
-            return new ResultError("error", "missing resource.metadata name/namespace");
+            throw new IllegalArgumentException("missing resource.metadata name/namespace");
         }
 
         JsonObject metricPayload = extractMetricPayload(stdin);
         if (metricPayload == null) {
-            return new ResultError("error", "missing metrics[0].value payload");
+            throw new IllegalArgumentException("missing metrics[0].value payload");
         }
 
-        Integer currentValue = parseMetricToInt(metricPayload, "current_value");
-        Integer targetValue = parseMetricToInt(metricPayload, "target_value");
-        if (currentValue == null || targetValue == null || targetValue == 0) {
-            return new ResultError("error", "invalid metric values");
+        BigInteger currentValue = parseMetricToInt(metricPayload, "current_value");
+        BigInteger targetValue = parseMetricToInt(metricPayload, "target_value");
+        if (targetValue.signum() == 0) {
+            throw new ArithmeticException("target metric is zero");
         }
 
-        double rate = ((double) currentValue) / ((double) targetValue * 1000.0);
+        double rate = currentValue.doubleValue() / targetValue.multiply(BigInteger.valueOf(1000)).doubleValue();
 
         Map<String, Object> config = context.config();
-        List<String> enabledStrategies = enabledStrategies(config);
+        Object enabledStrategies = config.containsKey("enabled_strategies")
+                ? config.get("enabled_strategies")
+                : STRATEGY_REPLICAS;
         int minReplicas = intOrDefault(config, "minReplicas", 1);
         int maxReplicas = intOrDefault(config, "maxReplicas", 10);
         int maxCpu = intOrDefault(config, "maxCPU", 1000);
 
         RuntimeContext hinted = context.withHints(resolveHints(context, deploymentName, deploymentNamespace));
-        int currentMcpu = intOrDefault(hinted.hints(), "current_mcpu", 0);
+        Integer currentMcpuValue = YamlMap.integer(hinted.hints(), "current_mcpu");
+        if (currentMcpuValue == null || currentMcpuValue == 0) {
+            return null;
+        }
+        int currentMcpu = currentMcpuValue;
         int initialMcpu = intOrDefault(hinted.hints(), "initial_mcpu", 0);
         int desiredReplicas = (int) Math.ceil(currentReplicas * rate);
 
         if (rate >= 0.95d) {
-            if (enabledStrategies.contains(STRATEGY_REPLICAS) && currentReplicas < maxReplicas) {
+            if (strategyEnabled(enabledStrategies, STRATEGY_REPLICAS) && currentReplicas < maxReplicas) {
                 desiredReplicas = Math.min(desiredReplicas, maxReplicas);
                 return buildEvaluation(STRATEGY_REPLICAS, mapOf("replicas", desiredReplicas));
             }
-            if (enabledStrategies.contains(STRATEGY_CPU) && currentMcpu < maxCpu) {
+            if (strategyEnabled(enabledStrategies, STRATEGY_CPU) && currentMcpu < maxCpu) {
                 return buildEvaluation(STRATEGY_CPU, mapOf(PARAM_CPU_MULTIPLIER, rate));
             }
-            if (enabledStrategies.contains(STRATEGY_TAG)) {
+            if (strategyEnabled(enabledStrategies, STRATEGY_TAG)) {
                 return buildEvaluation(
                         STRATEGY_TAG,
                         mapOf(
                                 PARAM_TAG_UP, false,
-                                PARAM_UPDATE_CPU, enabledStrategies.contains(STRATEGY_CPU)));
+                                PARAM_UPDATE_CPU, strategyEnabled(enabledStrategies, STRATEGY_CPU)));
             }
         }
 
         if (rate < 0.90d) {
-            if (enabledStrategies.contains(STRATEGY_REPLICAS) && currentReplicas > minReplicas) {
+            if (strategyEnabled(enabledStrategies, STRATEGY_REPLICAS) && currentReplicas > minReplicas) {
                 desiredReplicas = Math.max(desiredReplicas, minReplicas);
                 return buildEvaluation(STRATEGY_REPLICAS, mapOf("replicas", desiredReplicas));
             }
-            if (enabledStrategies.contains(STRATEGY_CPU) && currentMcpu > initialMcpu) {
+            if (strategyEnabled(enabledStrategies, STRATEGY_CPU) && currentMcpu > initialMcpu) {
                 return buildEvaluation(STRATEGY_CPU, mapOf(PARAM_CPU_MULTIPLIER, rate));
             }
-            if (enabledStrategies.contains(STRATEGY_TAG)) {
+            if (strategyEnabled(enabledStrategies, STRATEGY_TAG)) {
                 return buildEvaluation(STRATEGY_TAG, mapOf(PARAM_TAG_UP, true));
             }
         }
@@ -129,18 +147,25 @@ public final class EvaluateRuntime {
         }
 
         try {
-            return GSON.fromJson(metricValue, JsonObject.class);
+            JsonObject payload = GSON.fromJson(metricValue, JsonObject.class);
+            return payload;
         } catch (RuntimeException e) {
-            return null;
+            throw new IllegalArgumentException("invalid metrics[0].value payload", e);
         }
     }
 
-    private static Integer parseMetricToInt(JsonObject payload, String key) {
-        String value = JsonUtil.string(payload, key);
-        if (value == null || value.isBlank()) {
-            return null;
+    private static BigInteger parseMetricToInt(JsonObject payload, String key) {
+        JsonElement value = payload == null ? null : payload.get(key);
+        if (value == null || value.isJsonNull() || !value.isJsonPrimitive()) {
+            throw new IllegalArgumentException("invalid metric value: " + key);
         }
-        return parseQuantityInt(value);
+        if (value.getAsJsonPrimitive().isBoolean()) {
+            return value.getAsBoolean() ? BigInteger.ONE : BigInteger.ZERO;
+        }
+        if (value.getAsJsonPrimitive().isNumber()) {
+            return new BigDecimal(value.getAsDouble()).toBigInteger();
+        }
+        return parseQuantityInt(value.getAsString());
     }
 
     private static int intOrDefault(Map<String, Object> source, String key, int defaultValue) {
@@ -148,24 +173,17 @@ public final class EvaluateRuntime {
         return value == null ? defaultValue : value;
     }
 
-    private static List<String> enabledStrategies(Map<String, Object> config) {
-        List<Object> raw = YamlMap.list(config, "enabled_strategies");
-        if (raw.isEmpty()) {
-            List<String> fallback = new ArrayList<>();
-            fallback.add(STRATEGY_REPLICAS);
-            return fallback;
+    private static boolean strategyEnabled(Object configured, String strategy) {
+        if (configured instanceof String text) {
+            return text.contains(strategy);
         }
-
-        List<String> parsed = new ArrayList<>();
-        for (Object item : raw) {
-            if (item instanceof String strategy) {
-                parsed.add(strategy);
-            }
+        if (configured instanceof List<?> list) {
+            return list.contains(strategy);
         }
-        if (parsed.isEmpty()) {
-            parsed.add(STRATEGY_REPLICAS);
+        if (configured instanceof Map<?, ?> map) {
+            return map.containsKey(strategy);
         }
-        return parsed;
+        throw new IllegalArgumentException("enabled_strategies is not iterable");
     }
 
     private static JsonObject buildEvaluation(String strategy, Map<String, Object> params) {
@@ -176,84 +194,65 @@ public final class EvaluateRuntime {
     }
 
     private static Map<String, Object> mapOf(String key, Object value) {
-        return Map.of(key, normalizeRate(value));
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put(key, value);
+        return values;
     }
 
     private static Map<String, Object> mapOf(String key1, Object value1, String key2, Object value2) {
-        return Map.of(
-                key1, normalizeRate(value1),
-                key2, normalizeRate(value2));
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put(key1, value1);
+        values.put(key2, value2);
+        return values;
     }
 
-    private static Object normalizeRate(Object value) {
-        if (value instanceof Double d) {
-            if (!Double.isFinite(d)) {
-                return d;
-            }
-            return BigDecimal.valueOf(d).setScale(12, RoundingMode.HALF_UP).stripTrailingZeros().doubleValue();
-        }
-        return value;
-    }
-
-    private static Integer parseQuantityInt(String raw) {
+    private static BigInteger parseQuantityInt(String raw) {
         if (raw == null || raw.isBlank()) {
-            return null;
+            throw new IllegalArgumentException("invalid quantity");
         }
 
-        String value = raw.trim();
+        String number = raw;
+        String suffix = null;
+        int length = raw.length();
+        if (length >= 2 && raw.charAt(length - 1) == 'i'
+                && QUANTITY_EXPONENTS.containsKey(raw.charAt(length - 2))) {
+            number = raw.substring(0, length - 2);
+            suffix = raw.substring(length - 2);
+        } else if (length >= 1 && QUANTITY_EXPONENTS.containsKey(raw.charAt(length - 1))) {
+            number = raw.substring(0, length - 1);
+            suffix = raw.substring(length - 1);
+        }
 
+        BigDecimal parsed;
         try {
-            if (value.endsWith("m")) {
-                String base = value.substring(0, value.length() - 1);
-                BigDecimal milli = new BigDecimal(base);
-                BigDecimal units = milli.divide(BigDecimal.valueOf(1000), 9, RoundingMode.DOWN);
-                return units.intValue();
-            }
-
-            if (value.endsWith("n")) {
-                String base = value.substring(0, value.length() - 1);
-                BigDecimal nano = new BigDecimal(base);
-                BigDecimal units = nano.divide(BigDecimal.valueOf(1_000_000_000L), 9, RoundingMode.DOWN);
-                return units.intValue();
-            }
-
-            if (value.endsWith("k") || value.endsWith("K")) {
-                String base = value.substring(0, value.length() - 1);
-                BigDecimal number = new BigDecimal(base).multiply(BigDecimal.valueOf(1000));
-                return number.intValue();
-            }
-
-            if (value.endsWith("M")) {
-                String base = value.substring(0, value.length() - 1);
-                BigDecimal number = new BigDecimal(base).multiply(BigDecimal.valueOf(1_000_000));
-                return number.intValue();
-            }
-
-            if (value.endsWith("G")) {
-                String base = value.substring(0, value.length() - 1);
-                BigDecimal number = new BigDecimal(base).multiply(BigDecimal.valueOf(1_000_000_000L));
-                return number.intValue();
-            }
-
-            if (value.endsWith("Ki") || value.endsWith("Mi") || value.endsWith("Gi")) {
-                String suffix = value.endsWith("Ki") ? "Ki" : value.endsWith("Mi") ? "Mi" : "Gi";
-                String base = value.substring(0, value.length() - suffix.length());
-                BigDecimal factor = switch (suffix) {
-                    case "Ki" -> BigDecimal.valueOf(1024L);
-                    case "Mi" -> BigDecimal.valueOf(1024L * 1024L);
-                    default -> BigDecimal.valueOf(1024L * 1024L * 1024L);
-                };
-                return new BigDecimal(base).multiply(factor).intValue();
-            }
-
-            return new BigDecimal(value).intValue();
+            parsed = new BigDecimal(number);
         } catch (NumberFormatException ex) {
-            return null;
+            throw new IllegalArgumentException("invalid number format: " + number, ex);
         }
+        if (suffix == null) {
+            return parsed.toBigInteger();
+        }
+        if ("ki".equals(suffix)) {
+            throw new IllegalArgumentException(raw + " has unknown suffix");
+        }
+
+        int exponent = QUANTITY_EXPONENTS.get(suffix.charAt(0));
+        BigDecimal quantity;
+        if (suffix.endsWith("i")) {
+            BigDecimal factor = BigDecimal.valueOf(1024).pow(Math.abs(exponent));
+            quantity = exponent < 0 ? parsed.divide(factor) : parsed.multiply(factor);
+        } else {
+            quantity = parsed.scaleByPowerOfTen(exponent * 3);
+        }
+        return quantity.toBigInteger();
     }
 
     private static Map<String, Object> resolveHints(RuntimeContext context, String name, String namespace) {
         if (!context.hints().isEmpty()) {
+            if (Boolean.TRUE.equals(YamlMap.bool(context.hints(), "kubernetes_error"))
+                    || Boolean.TRUE.equals(YamlMap.bool(context.hints(), "deployment_missing"))) {
+                throw new IllegalStateException("failed to resolve Kubernetes state");
+            }
             return context.hints();
         }
 
@@ -265,24 +264,27 @@ public final class EvaluateRuntime {
 
             V1Deployment deployment = apps.readNamespacedDeployment(name, namespace).execute();
             if (deployment == null) {
-                return Map.of();
+                throw new IllegalStateException("deployment not found");
             }
 
             Integer currentMcpu = readCurrentMcpu(core, namespace, deployment);
             InitialDataStore store = new InitialDataStore(context, core, customObjects);
             Integer initialMcpu = store.getStoredCpuLimit();
-            if (initialMcpu == null || initialMcpu <= 0) {
-                initialMcpu = readSpecMcpu(deployment);
-                store.storeCpuLimit(initialMcpu);
+            Map<String, Object> state = new HashMap<>();
+            if (currentMcpu != null) {
+                state.put("current_mcpu", currentMcpu);
             }
-
-            return Map.of(
-                    "current_mcpu", currentMcpu == null ? 0 : currentMcpu,
-                    "initial_mcpu", initialMcpu == null ? 0 : initialMcpu);
+            if (initialMcpu == null) {
+                store.storeCpuLimit(readSpecMcpu(deployment));
+                state.put("initial_mcpu", 0);
+            } else {
+                state.put("initial_mcpu", initialMcpu);
+            }
+            return state;
         } catch (ApiException e) {
-            return Map.of();
+            throw new IllegalStateException("failed to resolve Kubernetes state", e);
         } catch (Exception e) {
-            return Map.of();
+            throw new IllegalStateException("failed to resolve Kubernetes state", e);
         }
     }
 
