@@ -132,6 +132,20 @@ public class ContractParityTest {
         assertAdaptTagCase("adapt_tag.skip_boundary");
     }
 
+    @Test
+    public void adaptTagMissingParameterProducesNoStdout() {
+        JsonObject stdin = JsonParser.parseString("""
+                {
+                  "resource":{"metadata":{"name":"kube-znn","namespace":"default"}},
+                  "evaluation":{"parameters":{}}
+                }
+                """).getAsJsonObject();
+        RuntimeContext context = new RuntimeContext(
+                stdin.toString(), stdin, Collections.emptyMap(), Map.of("rollout_in_progress", false));
+
+        assertEquals("", stdoutFromHandler(Mode.ADAPT_TAG, context));
+    }
+
     private void assertEvaluateCase(String caseId) throws IOException {
         JsonObject fixture = readFixture(caseId);
         RuntimeContext context = contextFromFixture(fixture);
@@ -235,11 +249,15 @@ public class ContractParityTest {
     }
 
     private static String stdoutFromEvaluateHandler(RuntimeContext context) {
+        return stdoutFromHandler(Mode.EVALUATE, context);
+    }
+
+    private static String stdoutFromHandler(Mode mode, RuntimeContext context) {
         ByteArrayOutputStream stdout = new ByteArrayOutputStream();
         PrintStream originalOut = System.out;
         try (PrintStream replacement = new PrintStream(stdout, true, StandardCharsets.UTF_8)) {
             System.setOut(replacement);
-            ModeHandlers.forMode(Mode.EVALUATE).handle(context);
+            ModeHandlers.forMode(mode).handle(context);
         } finally {
             System.setOut(originalOut);
         }

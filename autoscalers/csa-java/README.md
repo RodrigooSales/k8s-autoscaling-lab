@@ -36,8 +36,9 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 - `config.yaml`: valores comportamentais comparados automaticamente com a configuracao Python.
 - `adapt_replicas`, `adapt_cpu` e `adapt_tag`: fluxo Kubernetes coberto por traces HTTP estaticos equivalentes ao Python.
 - `initialData`: sem cache local; releitura, merge e PATCH do Pod seguem o fluxo Python.
+- Processo: stdout, codigos de saida e logs seguem o Python nos caminhos dos experimentos e falhas cobertas.
 - Diferencas conhecidas (edge cases):
-  - erros de processo e logging ainda precisam ser equiparados.
+  - configuracoes invalidas incomuns e entradas fora dos cenarios reais nao sao alvo de paridade exaustiva.
 
 ## Estrutura de pacotes
 
@@ -69,8 +70,8 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
   - `InitialDataStore`: equivalente funcional do script Python `initial_data.py`.
 - `org.csajava.util`
   - `JsonUtil`, `YamlMap`, `CpuQuantity`: utilitarios compartilhados.
-- `org.csajava.model`
-  - `ResultError`: payload padrao de erro.
+- `org.csajava.logging`
+  - `AdapterLogger`: formato e destinos de log equivalentes ao Python.
 
 ## Mapeamento Python -> Java
 
@@ -91,6 +92,7 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 - `QuantityParityTest`: cobre os formatos de metrica usados pelo experimento.
 - `Adapt*RuntimeTest`: compara ordem, metodo, endpoint e payload sem exigir cluster real.
 - `InitialDataStoreTest`: cobre atraso de reconciliacao, merge, sequencia HTTP e falhas de persistencia.
+- `AppTest`, `JsonOutTest` e `RuntimeLoggingTest`: cobrem stdout, exit code e logs normalizados.
 
 Os testes Java nao executam scripts Python. A validacao in-cluster continua necessaria para os efeitos Kubernetes.
 

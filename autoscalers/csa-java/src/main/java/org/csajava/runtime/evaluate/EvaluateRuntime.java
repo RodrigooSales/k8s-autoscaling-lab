@@ -24,6 +24,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.csajava.context.RuntimeContext;
+import org.csajava.io.JsonOut;
+import org.csajava.logging.AdapterLogger;
 import org.csajava.runtime.initialdata.InitialDataStore;
 import org.csajava.util.CpuQuantity;
 import org.csajava.util.JsonUtil;
@@ -55,6 +57,8 @@ public final class EvaluateRuntime {
     }
 
     public static Object evaluate(RuntimeContext context) {
+        new AdapterLogger("eval_main").info("evaluate main");
+        AdapterLogger logger = new AdapterLogger("evaluate");
         JsonObject stdin = context.stdinJson();
         JsonObject resource = JsonUtil.object(stdin, "resource");
         JsonObject resourceSpec = JsonUtil.object(resource, "spec");
@@ -70,10 +74,24 @@ public final class EvaluateRuntime {
             throw new IllegalArgumentException("missing resource.metadata name/namespace");
         }
 
+        logger.info("Starting evaluate script");
+
+        Map<String, Object> config = context.loadConfig();
+        logger.info("  loaded config");
+
         JsonObject metricPayload = extractMetricPayload(stdin);
         if (metricPayload == null) {
             throw new IllegalArgumentException("missing metrics[0].value payload");
         }
+        logger.info("  loaded spec data");
+
+        Object enabledStrategies = config.containsKey("enabled_strategies")
+                ? config.get("enabled_strategies")
+                : STRATEGY_REPLICAS;
+        int minReplicas = intOrDefault(config, "minReplicas", 1);
+        int maxReplicas = intOrDefault(config, "maxReplicas", 10);
+        int maxCpu = intOrDefault(config, "maxCPU", 1000);
+        logger.info("  parsed config data");
 
         BigInteger currentValue = parseMetricToInt(metricPayload, "current_value");
         BigInteger targetValue = parseMetricToInt(metricPayload, "target_value");
@@ -81,19 +99,15 @@ public final class EvaluateRuntime {
             throw new ArithmeticException("target metric is zero");
         }
 
-        double rate = currentValue.doubleValue() / targetValue.multiply(BigInteger.valueOf(1000)).doubleValue();
-
-        Map<String, Object> config = context.config();
-        Object enabledStrategies = config.containsKey("enabled_strategies")
-                ? config.get("enabled_strategies")
-                : STRATEGY_REPLICAS;
-        int minReplicas = intOrDefault(config, "minReplicas", 1);
-        int maxReplicas = intOrDefault(config, "maxReplicas", 10);
-        int maxCpu = intOrDefault(config, "maxCPU", 1000);
+        BigInteger scaledTarget = targetValue.multiply(BigInteger.valueOf(1000));
+        double rate = currentValue.doubleValue() / scaledTarget.doubleValue();
+        logger.info("rate " + currentValue + " / " + scaledTarget + " = " + rate);
+        logger.info("plan for rate " + rate + "; stragegies " + strategiesText(enabledStrategies));
 
         RuntimeContext hinted = context.withHints(resolveHints(context, deploymentName, deploymentNamespace));
         Integer currentMcpuValue = YamlMap.integer(hinted.hints(), "current_mcpu");
         if (currentMcpuValue == null || currentMcpuValue == 0) {
+            logger.error("Current CPU limit not found or unparsable");
             return null;
         }
         int currentMcpu = currentMcpuValue;
@@ -103,13 +117,14 @@ public final class EvaluateRuntime {
         if (rate >= 0.95d) {
             if (strategyEnabled(enabledStrategies, STRATEGY_REPLICAS) && currentReplicas < maxReplicas) {
                 desiredReplicas = Math.min(desiredReplicas, maxReplicas);
-                return buildEvaluation(STRATEGY_REPLICAS, mapOf("replicas", desiredReplicas));
+                return loggedEvaluation(logger, STRATEGY_REPLICAS, mapOf("replicas", desiredReplicas));
             }
             if (strategyEnabled(enabledStrategies, STRATEGY_CPU) && currentMcpu < maxCpu) {
-                return buildEvaluation(STRATEGY_CPU, mapOf(PARAM_CPU_MULTIPLIER, rate));
+                return loggedEvaluation(logger, STRATEGY_CPU, mapOf(PARAM_CPU_MULTIPLIER, rate));
             }
             if (strategyEnabled(enabledStrategies, STRATEGY_TAG)) {
-                return buildEvaluation(
+                return loggedEvaluation(
+                        logger,
                         STRATEGY_TAG,
                         mapOf(
                                 PARAM_TAG_UP, false,
@@ -120,16 +135,17 @@ public final class EvaluateRuntime {
         if (rate < 0.90d) {
             if (strategyEnabled(enabledStrategies, STRATEGY_REPLICAS) && currentReplicas > minReplicas) {
                 desiredReplicas = Math.max(desiredReplicas, minReplicas);
-                return buildEvaluation(STRATEGY_REPLICAS, mapOf("replicas", desiredReplicas));
+                return loggedEvaluation(logger, STRATEGY_REPLICAS, mapOf("replicas", desiredReplicas));
             }
             if (strategyEnabled(enabledStrategies, STRATEGY_CPU) && currentMcpu > initialMcpu) {
-                return buildEvaluation(STRATEGY_CPU, mapOf(PARAM_CPU_MULTIPLIER, rate));
+                return loggedEvaluation(logger, STRATEGY_CPU, mapOf(PARAM_CPU_MULTIPLIER, rate));
             }
             if (strategyEnabled(enabledStrategies, STRATEGY_TAG)) {
-                return buildEvaluation(STRATEGY_TAG, mapOf(PARAM_TAG_UP, true));
+                return loggedEvaluation(logger, STRATEGY_TAG, mapOf(PARAM_TAG_UP, true));
             }
         }
 
+        logger.info("No adaptation selected");
         return null;
     }
 
@@ -190,6 +206,27 @@ public final class EvaluateRuntime {
         out.addProperty("strategy", strategy);
         out.add("parameters", GSON.toJsonTree(params));
         return out;
+    }
+
+    private static JsonObject loggedEvaluation(
+            AdapterLogger logger, String strategy, Map<String, Object> parameters) {
+        JsonObject evaluation = buildEvaluation(strategy, parameters);
+        logger.info(JsonOut.stringify(evaluation));
+        return evaluation;
+    }
+
+    private static String strategiesText(Object strategies) {
+        if (!(strategies instanceof List<?> values)) {
+            return String.valueOf(strategies);
+        }
+        StringBuilder text = new StringBuilder("[");
+        for (int index = 0; index < values.size(); index++) {
+            if (index > 0) {
+                text.append(", ");
+            }
+            text.append('\'').append(values.get(index)).append('\'');
+        }
+        return text.append(']').toString();
     }
 
     private static Map<String, Object> mapOf(String key, Object value) {

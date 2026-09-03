@@ -12,6 +12,7 @@ import io.kubernetes.client.openapi.models.V1Deployment;
 import io.kubernetes.client.util.Config;
 import io.kubernetes.client.util.PatchUtils;
 import org.csajava.context.RuntimeContext;
+import org.csajava.logging.AdapterLogger;
 import org.csajava.runtime.adapt.AdaptSupport;
 
 public final class AdaptReplicasRuntime {
@@ -19,18 +20,27 @@ public final class AdaptReplicasRuntime {
     }
 
     public static Object evaluate(RuntimeContext context) {
+        AdapterLogger logger = new AdapterLogger("adapt_repl");
         if (!context.hints().isEmpty()) {
+            logger.info("Starting adapt_replicas script");
             JsonElement replicas = replicaParameter(context);
             if (replicas == null) {
+                logger.error("Parameters must include integer 'replicas'");
                 return null;
             }
+            logger.info("Scaling to " + replicas + " replicas");
             boolean patchSuccess = AdaptSupport.hintBool(context, "deployment_patch_success", true);
-            return patchSuccess ? replicaResult(replicas) : AdaptSupport.error();
+            if (patchSuccess) {
+                return replicaResult(replicas);
+            }
+            logger.error("Failed to patch Deployment null/null: hinted failure");
+            return AdaptSupport.error();
         }
 
         String name = AdaptSupport.resourceName(context);
         String namespace = AdaptSupport.resourceNamespace(context);
         if (name == null || namespace == null) {
+            logger.error("Spec must include resource.metadata.name and resource.metadata.namespace");
             return null;
         }
 
@@ -38,24 +48,39 @@ public final class AdaptReplicasRuntime {
             ApiClient client = Config.fromCluster();
             AppsV1Api apps = new AppsV1Api(client);
 
-            return adaptDeployment(context, apps, client, name, namespace);
+            logger.info("Starting adapt_replicas script");
+            return adaptDeployment(context, apps, client, name, namespace, logger);
         } catch (Exception e) {
+            logger.error("Failed to load in-cluster config: " + e);
             return null;
         }
     }
 
     static Object adaptDeployment(
             RuntimeContext context, AppsV1Api apps, ApiClient client, String name, String namespace) {
+        return adaptDeployment(context, apps, client, name, namespace, new AdapterLogger("adapt_repl"));
+    }
+
+    private static Object adaptDeployment(
+            RuntimeContext context,
+            AppsV1Api apps,
+            ApiClient client,
+            String name,
+            String namespace,
+            AdapterLogger logger) {
         V1Deployment deployment;
         try {
             deployment = apps.readNamespacedDeployment(name, namespace).execute();
         } catch (ApiException error) {
+            logger.error("Failed to read Deployment " + namespace + "/" + name + ": " + error);
             return null;
         }
         JsonElement replicas = replicaParameter(context);
         if (replicas == null) {
+            logger.error("Parameters must include integer 'replicas'");
             return null;
         }
+        logger.info("Scaling to " + replicas + " replicas");
 
         JsonObject body;
         if (replicas.getAsJsonPrimitive().isBoolean()) {
@@ -74,6 +99,7 @@ public final class AdaptReplicasRuntime {
                     V1Patch.PATCH_FORMAT_STRATEGIC_MERGE_PATCH,
                     client);
         } catch (ApiException error) {
+            logger.error("Failed to patch Deployment " + namespace + "/" + name + ": " + error);
             return AdaptSupport.error();
         }
         return replicaResult(replicas);

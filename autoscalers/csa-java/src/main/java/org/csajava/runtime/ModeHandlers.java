@@ -31,8 +31,18 @@ public final class ModeHandlers {
                     JsonOut.write(result);
                 }
             };
-            case ADAPT_TAG -> context -> JsonOut.write(AdaptTagRuntime.evaluate(context));
-            case ADAPT_CPU -> context -> JsonOut.write(AdaptCpuRuntime.evaluate(context));
+            case ADAPT_TAG -> context -> {
+                Object result = AdaptTagRuntime.evaluate(context);
+                if (result != null) {
+                    JsonOut.write(result);
+                }
+            };
+            case ADAPT_CPU -> context -> {
+                Object result = AdaptCpuRuntime.evaluate(context);
+                if (result != null) {
+                    JsonOut.write(result);
+                }
+            };
         };
     }
 }

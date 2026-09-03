@@ -1,6 +1,7 @@
 package org.csajava.runtime.adapt.cpu;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -73,11 +74,33 @@ public class AdaptCpuRuntimeTest {
     public void stopsAtTheFirstResizeFailure() {
         CpuApi firstFailure = runWithFailure("pod-a");
         assertEquals("error", firstFailure.result.get("result").getAsString());
+        assertEquals(1, firstFailure.result.size());
         assertEquals(List.of("pod-a"), firstFailure.resizedPods);
 
         CpuApi lastFailure = runWithFailure("pod-c");
         assertEquals("error", lastFailure.result.get("result").getAsString());
+        assertEquals(1, lastFailure.result.size());
         assertEquals(List.of("pod-a", "pod-b", "pod-c"), lastFailure.resizedPods);
+    }
+
+    @Test
+    public void setupApiFailuresFollowPythonProcessContract() {
+        CpuApi deploymentFailure = new CpuApi("DEPLOYMENT", false);
+        RuntimeContext context = context();
+        assertEquals(null, AdaptCpuRuntime.adaptInCluster(
+                context,
+                deploymentFailure.client,
+                new AppsV1Api(deploymentFailure.client),
+                new CoreV1Api(deploymentFailure.client),
+                new InitialDataStore(context, null, null)));
+
+        CpuApi listFailure = new CpuApi("LIST", false);
+        assertThrows(IllegalStateException.class, () -> AdaptCpuRuntime.adaptInCluster(
+                context,
+                listFailure.client,
+                new AppsV1Api(listFailure.client),
+                new CoreV1Api(listFailure.client),
+                new InitialDataStore(context, null, null)));
     }
 
     @Test
@@ -237,10 +260,12 @@ public class AdaptCpuRuntimeTest {
             String body;
             int status = 200;
             if (target.contains("/deployments/")) {
-                body = deploymentJson(rollout);
+                status = "DEPLOYMENT".equals(failingPod) ? 500 : 200;
+                body = status == 200 ? deploymentJson(rollout) : "{}";
             } else if ("GET".equals(request.method()) && target.contains("/pods")) {
                 podLists++;
-                body = podsJson(emptyPods, podLists > 1);
+                status = "LIST".equals(failingPod) ? 500 : 200;
+                body = status == 200 ? podsJson(emptyPods, podLists > 1) : "{}";
             } else {
                 String pod = request.url().pathSegments().get(5);
                 resizedPods.add(pod);

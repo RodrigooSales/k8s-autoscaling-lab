@@ -3,7 +3,7 @@ package org.csajava.runtime.metric;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import org.csajava.context.RuntimeContext;
-import org.csajava.model.ResultError;
+import org.csajava.logging.AdapterLogger;
 import org.csajava.util.JsonUtil;
 
 public final class MetricRuntime {
@@ -11,7 +11,9 @@ public final class MetricRuntime {
     }
 
     public static Object evaluate(RuntimeContext context) {
+        AdapterLogger logger = new AdapterLogger("metric");
         JsonObject stdin = context.stdinJson();
+        logger.info("Starting metric script");
 
         JsonObject resource = JsonUtil.object(stdin, "resource");
         JsonObject resourceSpec = JsonUtil.object(resource, "spec");
@@ -19,7 +21,7 @@ public final class MetricRuntime {
 
         JsonArray kmetrics = JsonUtil.array(stdin, "kubernetesMetrics");
         if (kmetrics == null || kmetrics.isEmpty() || !kmetrics.get(0).isJsonObject()) {
-            return new ResultError("error", "missing kubernetesMetrics[0]");
+            throw new IllegalArgumentException("missing kubernetesMetrics[0]");
         }
 
         JsonObject firstMetric = kmetrics.get(0).getAsJsonObject();
@@ -27,7 +29,7 @@ public final class MetricRuntime {
         String currentValue = JsonUtil.stringPath(firstMetric, "external", "current", "value");
 
         if (currentReplicas == null || targetValue == null || currentValue == null) {
-            return new ResultError("error", "invalid metric input payload");
+            throw new IllegalArgumentException("invalid metric input payload");
         }
 
         JsonObject out = new JsonObject();

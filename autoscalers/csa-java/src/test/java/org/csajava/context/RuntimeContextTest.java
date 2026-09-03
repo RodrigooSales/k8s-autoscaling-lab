@@ -19,7 +19,8 @@ public class RuntimeContextTest {
 
         assertNotNull(context.stdinJson());
         assertEquals(1, context.stdinJson().get("a").getAsInt());
-        assertEquals(5000, YamlMap.integer(context.config(), "interval").intValue());
+        assertTrue(context.config().isEmpty());
+        assertEquals(5000, YamlMap.integer(context.loadConfig(), "interval").intValue());
         assertTrue(context.hints().isEmpty());
     }
 

@@ -13,6 +13,11 @@ import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +58,38 @@ public class InitialDataStoreTest {
         assertEquals("500", initialData.get("cpu_limit").getAsString());
         assertEquals("600k", initialData.get("tag").getAsString());
         assertFalse(initialData.has("annotation_only"));
+    }
+
+    @Test
+    public void logsStatusAndMergeLikePython() throws Exception {
+        InitialDataApi api = new InitialDataApi(List.of(
+                "{\"cpu_limit\":\"500\"}",
+                "{\"cpu_limit\":\"500\"}"));
+        ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        String originalPath = System.getProperty("csa.adapter.log");
+        Path log = Files.createTempFile("csa-java-initial-data", ".log");
+        try {
+            System.setProperty("csa.adapter.log", log.toString());
+            System.setErr(new PrintStream(stderr, true, StandardCharsets.UTF_8));
+
+            store(api).storeTag("600k");
+
+            String expected = """
+                    initial_data -   INFO - {'initialData': '{"cpu_limit":"500"}'}
+                    initial_data -   INFO - {'tag': '600k'}
+                    initial_data -   INFO - {'cpu_limit': '500', 'tag': '600k'}
+                    """;
+            assertEquals(expected, normalize(stderr.toString(StandardCharsets.UTF_8)));
+            assertEquals(expected, normalize(Files.readString(log)));
+        } finally {
+            if (originalPath == null) {
+                System.clearProperty("csa.adapter.log");
+            } else {
+                System.setProperty("csa.adapter.log", originalPath);
+            }
+            System.setErr(originalErr);
+        }
     }
 
     @Test
@@ -149,6 +186,10 @@ public class InitialDataStoreTest {
                 .get(INITIAL_DATA)
                 .getAsString();
         return JsonParser.parseString(annotation).getAsJsonObject();
+    }
+
+    private static String normalize(String value) {
+        return value.replaceAll("(?m)^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2},\\d{3} ", "");
     }
 
     private static final class InitialDataApi {

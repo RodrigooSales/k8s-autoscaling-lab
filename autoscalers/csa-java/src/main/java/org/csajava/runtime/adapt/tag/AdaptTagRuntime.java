@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.csajava.context.RuntimeContext;
+import org.csajava.logging.AdapterLogger;
 import org.csajava.runtime.adapt.AdaptSupport;
 import org.csajava.runtime.initialdata.InitialDataStore;
 import org.csajava.util.JsonUtil;
@@ -36,26 +37,31 @@ public final class AdaptTagRuntime {
     }
 
     public static Object evaluate(RuntimeContext context) {
+        AdapterLogger logger = new AdapterLogger("adapt_tag");
         if (!context.hints().isEmpty()) {
             Boolean tagUp = JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_TAG_UP);
             if (tagUp == null) {
-                return AdaptSupport.error();
+                logger.error("Parameters must include 'tag_up' (bool)");
+                return null;
             }
             boolean updateCpu = Boolean.TRUE.equals(
                     JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_UPDATE_CPU));
-            return evaluateFromHints(context, tagUp, updateCpu);
+            return evaluateFromHints(context, tagUp, updateCpu, logger);
         }
-        return evaluateInCluster(context);
+        return evaluateInCluster(context, logger);
     }
 
-    private static Object evaluateFromHints(RuntimeContext context, boolean tagUp, boolean updateCpu) {
+    private static Object evaluateFromHints(
+            RuntimeContext context, boolean tagUp, boolean updateCpu, AdapterLogger logger) {
         if (AdaptSupport.hintBool(context, "rollout_in_progress", false)) {
+            logger.info("Rollout in progress, skipping deployment patch");
             return AdaptSupport.skip();
         }
 
         String image = AdaptSupport.hintString(context, "container_znn_image");
         String currentTag = extractTag(image);
         if (currentTag == null) {
+            logger.fatal("Could not identify tag in current container image: " + image);
             return AdaptSupport.error();
         }
 
@@ -65,14 +71,17 @@ public final class AdaptTagRuntime {
         if (tagUp) {
             String initialTag = store.getStoredTag();
             if (initialTag != null && TAGS.contains(initialTag) && currentTag.equals(initialTag)) {
+                logger.info(currentTag + " is the initial tag, not adapting above it");
                 return AdaptSupport.skip();
             }
         }
 
         String newTag = adjacentTag(currentTag, tagUp);
         if (newTag == null) {
+            logger.info("No change possible for tag " + currentTag + " direction " + (tagUp ? "up" : "down"));
             return AdaptSupport.skip();
         }
+        logger.info("Adapting tag to " + newTag);
 
         if (updateCpu) {
             Integer initialMcpu = store.getStoredCpuLimit();
@@ -83,27 +92,33 @@ public final class AdaptTagRuntime {
         }
 
         boolean patchSuccess = AdaptSupport.hintBool(context, "deployment_patch_success", true);
-        return patchSuccess ? AdaptSupport.tag(newTag) : AdaptSupport.error();
+        if (patchSuccess) {
+            return AdaptSupport.tag(newTag);
+        }
+        logger.error("Failed to patch Deployment null/null: hinted failure");
+        return AdaptSupport.error();
     }
 
-    private static Object evaluateInCluster(RuntimeContext context) {
+    private static Object evaluateInCluster(RuntimeContext context, AdapterLogger logger) {
         String name = AdaptSupport.resourceName(context);
         String namespace = AdaptSupport.resourceNamespace(context);
         if (name == null || namespace == null) {
-            return AdaptSupport.error();
+            logger.error("Spec must include resource.metadata.name and resource.metadata.namespace");
+            return null;
         }
 
+        ApiClient client;
         try {
-            ApiClient client = Config.fromCluster();
-            AppsV1Api apps = new AppsV1Api(client);
-            CoreV1Api core = new CoreV1Api(client);
-            CustomObjectsApi customObjects = new CustomObjectsApi(client);
-            InitialDataStore store = new InitialDataStore(context, core, customObjects);
-
-            return adaptInCluster(context, client, apps, core, store);
+            client = Config.fromCluster();
         } catch (Exception e) {
-            return AdaptSupport.error();
+            logger.error("Failed to load in-cluster config: " + e);
+            return null;
         }
+        AppsV1Api apps = new AppsV1Api(client);
+        CoreV1Api core = new CoreV1Api(client);
+        CustomObjectsApi customObjects = new CustomObjectsApi(client);
+        InitialDataStore store = new InitialDataStore(context, core, customObjects);
+        return adaptInCluster(context, client, apps, core, store, logger);
     }
 
     static Object adaptInCluster(
@@ -112,71 +127,98 @@ public final class AdaptTagRuntime {
             AppsV1Api apps,
             CoreV1Api core,
             InitialDataStore store) {
+        return adaptInCluster(context, client, apps, core, store, new AdapterLogger("adapt_tag"));
+    }
+
+    private static Object adaptInCluster(
+            RuntimeContext context,
+            ApiClient client,
+            AppsV1Api apps,
+            CoreV1Api core,
+            InitialDataStore store,
+            AdapterLogger logger) {
         String name = AdaptSupport.resourceName(context);
         String namespace = AdaptSupport.resourceNamespace(context);
+        V1Deployment deployment;
         try {
-            V1Deployment deployment = apps.readNamespacedDeployment(name, namespace).execute();
-            if (deployment == null) {
-                return AdaptSupport.error();
-            }
+            deployment = apps.readNamespacedDeployment(name, namespace).execute();
+        } catch (ApiException error) {
+            logger.error("Failed to read Deployment " + namespace + "/" + name + ": " + error);
+            return null;
+        }
+        if (deployment == null) {
+            logger.error("Deployment " + namespace + "/" + name + " not found");
+            return null;
+        }
 
-            Boolean tagUp = JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_TAG_UP);
-            if (tagUp == null) {
-                return AdaptSupport.error();
-            }
-            boolean updateCpu = Boolean.TRUE.equals(
-                    JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_UPDATE_CPU));
+        Boolean tagUp = JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_TAG_UP);
+        if (tagUp == null) {
+            logger.error("Parameters must include 'tag_up' (bool)");
+            return null;
+        }
+        boolean updateCpu = Boolean.TRUE.equals(
+                JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_UPDATE_CPU));
 
-            if (AdaptSupport.rolloutInProgress(deployment)) {
+        if (AdaptSupport.rolloutInProgress(deployment)) {
+            logger.info("Rollout in progress, skipping deployment patch");
+            return AdaptSupport.skip();
+        }
+
+        V1Container znn = AdaptSupport.findContainer(deployment, CONTAINER_ZNN);
+        if (znn == null || znn.getImage() == null || znn.getImage().isBlank()) {
+            logger.error("Container 'znn' not found in deployment");
+            return null;
+        }
+
+        String currentTag = extractTag(znn.getImage());
+        if (currentTag == null) {
+            logger.fatal("Could not identify tag in current container image: " + znn.getImage());
+            return AdaptSupport.error();
+        }
+
+        store.storeTag(currentTag);
+
+        if (tagUp) {
+            String initialTag = store.getStoredTag();
+            if (initialTag != null && TAGS.contains(initialTag) && currentTag.equals(initialTag)) {
+                logger.info(currentTag + " is the initial tag, not adapting above it");
                 return AdaptSupport.skip();
             }
+        }
 
-            V1Container znn = AdaptSupport.findContainer(deployment, CONTAINER_ZNN);
-            if (znn == null || znn.getImage() == null || znn.getImage().isBlank()) {
-                return AdaptSupport.error();
+        String newTag = adjacentTag(currentTag, tagUp);
+        if (newTag == null) {
+            logger.info("No change possible for tag " + currentTag + " direction " + (tagUp ? "up" : "down"));
+            return AdaptSupport.skip();
+        }
+
+        znn.setImage(replaceTag(znn.getImage(), newTag));
+        logger.info("Adapting tag to " + newTag);
+
+        if (updateCpu) {
+            Object initialMcpu = store.getStoredCpuLimitValue();
+            if (initialMcpu == null) {
+                Integer specMcpu = AdaptSupport.specMcpu(deployment);
+                store.storeCpuLimit(specMcpu);
+                initialMcpu = specMcpu;
             }
 
-            String currentTag = extractTag(znn.getImage());
-            if (currentTag == null) {
-                return AdaptSupport.error();
+            Integer currentMcpu = AdaptSupport.currentMcpu(runningPods(core, namespace, deployment));
+            if (currentMcpu == null || currentMcpu == 0) {
+                logger.info("Could not read current mcpu");
             }
-
-            store.storeTag(currentTag);
-
-            if (tagUp) {
-                String initialTag = store.getStoredTag();
-                if (initialTag != null && TAGS.contains(initialTag) && currentTag.equals(initialTag)) {
-                    return AdaptSupport.skip();
+            if (currentMcpu != null && shouldUpdateCpu(initialMcpu, currentMcpu)
+                    && deployment.getSpec() != null
+                    && deployment.getSpec().getTemplate() != null
+                    && deployment.getSpec().getTemplate().getSpec() != null
+                    && deployment.getSpec().getTemplate().getSpec().getContainers() != null) {
+                for (V1Container container : deployment.getSpec().getTemplate().getSpec().getContainers()) {
+                    AdaptSupport.ensureContainerCpuLimit(container, currentMcpu);
                 }
             }
+        }
 
-            String newTag = adjacentTag(currentTag, tagUp);
-            if (newTag == null) {
-                return AdaptSupport.skip();
-            }
-
-            znn.setImage(replaceTag(znn.getImage(), newTag));
-
-            if (updateCpu) {
-                Object initialMcpu = store.getStoredCpuLimitValue();
-                if (initialMcpu == null) {
-                    Integer specMcpu = AdaptSupport.specMcpu(deployment);
-                    store.storeCpuLimit(specMcpu);
-                    initialMcpu = specMcpu;
-                }
-
-                Integer currentMcpu = AdaptSupport.currentMcpu(AdaptSupport.runningPods(core, namespace, deployment));
-                if (currentMcpu != null && shouldUpdateCpu(initialMcpu, currentMcpu)
-                        && deployment.getSpec() != null
-                        && deployment.getSpec().getTemplate() != null
-                        && deployment.getSpec().getTemplate().getSpec() != null
-                        && deployment.getSpec().getTemplate().getSpec().getContainers() != null) {
-                    for (V1Container container : deployment.getSpec().getTemplate().getSpec().getContainers()) {
-                        AdaptSupport.ensureContainerCpuLimit(container, currentMcpu);
-                    }
-                }
-            }
-
+        try {
             V1Patch patch = new V1Patch(JSON.serialize(deployment));
             PatchUtils.patch(
                     V1Deployment.class,
@@ -185,9 +227,17 @@ public final class AdaptTagRuntime {
                     client);
             return AdaptSupport.tag(newTag);
         } catch (ApiException e) {
+            logger.error("Failed to patch Deployment " + namespace + "/" + name + ": " + e);
             return AdaptSupport.error();
-        } catch (Exception e) {
-            return AdaptSupport.error();
+        }
+    }
+
+    private static List<io.kubernetes.client.openapi.models.V1Pod> runningPods(
+            CoreV1Api core, String namespace, V1Deployment deployment) {
+        try {
+            return AdaptSupport.runningPods(core, namespace, deployment);
+        } catch (ApiException error) {
+            throw new IllegalStateException("failed to list deployment pods", error);
         }
     }
 

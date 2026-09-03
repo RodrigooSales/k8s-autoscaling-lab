@@ -10,13 +10,25 @@ public record RuntimeContext(
         String stdinRaw,
         JsonObject stdinJson,
         Map<String, Object> config,
-        Map<String, Object> hints) {
+        Map<String, Object> hints,
+        String configPath) {
     private static final Gson GSON = new Gson();
+
+    public RuntimeContext(
+            String stdinRaw,
+            JsonObject stdinJson,
+            Map<String, Object> config,
+            Map<String, Object> hints) {
+        this(stdinRaw, stdinJson, config, hints, null);
+    }
 
     public static RuntimeContext load(String configPath, String stdinRaw) {
         JsonObject stdinJson = parseStdin(stdinRaw);
-        Map<String, Object> config = ConfigLoader.load(configPath);
-        return new RuntimeContext(stdinRaw, stdinJson, config, Collections.emptyMap());
+        return new RuntimeContext(stdinRaw, stdinJson, Collections.emptyMap(), Collections.emptyMap(), configPath);
+    }
+
+    public Map<String, Object> loadConfig() {
+        return configPath == null ? config : ConfigLoader.load(configPath);
     }
 
     public RuntimeContext withHints(Map<String, Object> extraHints) {
@@ -24,7 +36,8 @@ public record RuntimeContext(
                 stdinRaw,
                 stdinJson,
                 config,
-                extraHints == null ? Collections.emptyMap() : extraHints);
+                extraHints == null ? Collections.emptyMap() : extraHints,
+                configPath);
     }
 
     public RuntimeContext withConfig(Map<String, Object> updatedConfig) {
@@ -32,7 +45,8 @@ public record RuntimeContext(
                 stdinRaw,
                 stdinJson,
                 updatedConfig == null ? Collections.emptyMap() : updatedConfig,
-                hints);
+                hints,
+                null);
     }
 
     private static JsonObject parseStdin(String stdinRaw) {

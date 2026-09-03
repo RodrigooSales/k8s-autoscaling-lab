@@ -2,6 +2,7 @@ package org.csajava.runtime.adapt.tag;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -134,16 +135,28 @@ public class AdaptTagRuntimeTest {
     @Test
     public void apiFailureStopsAtFailingCall() {
         TagApi listFailure = new TagApi("registry.k8s.lab/kube-znn:600k", false, "LIST");
-        assertEquals("error", adapt(context(false, true), listFailure).get("result").getAsString());
+        assertThrows(IllegalStateException.class, () -> adapt(context(false, true), listFailure));
         assertEquals(List.of(
                 "GET /apis/apps/v1/namespaces/default/deployments/kube-znn",
                 "GET /api/v1/namespaces/default/pods?labelSelector=app%3Dkube-znn"), listFailure.trace);
 
         TagApi patchFailure = new TagApi("registry.k8s.lab/kube-znn:600k", false, "PATCH");
-        assertEquals("error", adapt(context(false, false), patchFailure).get("result").getAsString());
+        JsonObject patchResult = adapt(context(false, false), patchFailure);
+        assertEquals("error", patchResult.get("result").getAsString());
+        assertEquals(1, patchResult.size());
         assertEquals(List.of(
                 "GET /apis/apps/v1/namespaces/default/deployments/kube-znn",
                 "PATCH /apis/apps/v1/namespaces/default/deployments/kube-znn"), patchFailure.trace);
+    }
+
+    @Test
+    public void setupAndParameterFailuresFollowPythonProcessContract() {
+        TagApi deploymentFailure = new TagApi("registry.k8s.lab/kube-znn:600k", false, "DEPLOYMENT");
+        assertNull(adapt(context(false, false), deploymentFailure));
+
+        TagApi missingParameter = new TagApi("registry.k8s.lab/kube-znn:600k", false, null);
+        assertNull(adapt(context("{}"), missingParameter));
+        assertEquals(List.of("GET /apis/apps/v1/namespaces/default/deployments/kube-znn"), missingParameter.trace);
     }
 
     private static JsonObject adapt(RuntimeContext context, TagApi api) {
@@ -156,12 +169,16 @@ public class AdaptTagRuntimeTest {
     }
 
     private static RuntimeContext context(boolean tagUp, boolean updateCpu) {
+        return context("{\"tag_up\":" + tagUp + ",\"update_cpu\":" + updateCpu + "}");
+    }
+
+    private static RuntimeContext context(String parameters) {
         JsonObject stdin = JsonParser.parseString("""
                 {
                   "resource":{"metadata":{"name":"kube-znn","namespace":"default"}},
-                  "evaluation":{"parameters":{"tag_up":%s,"update_cpu":%s}}
+                  "evaluation":{"parameters":%s}
                 }
-                """.formatted(tagUp, updateCpu)).getAsJsonObject();
+                """.formatted(parameters)).getAsJsonObject();
         return new RuntimeContext(
                 stdin.toString(),
                 stdin,
@@ -211,7 +228,10 @@ public class AdaptTagRuntimeTest {
 
             boolean list = "GET".equals(request.method()) && target.contains("/pods");
             boolean patch = "PATCH".equals(request.method()) && target.contains("/deployments/");
-            int status = (list && "LIST".equals(failingCall)) || (patch && "PATCH".equals(failingCall))
+            boolean deployment = "GET".equals(request.method()) && target.contains("/deployments/");
+            int status = (list && "LIST".equals(failingCall))
+                            || (patch && "PATCH".equals(failingCall))
+                            || (deployment && "DEPLOYMENT".equals(failingCall))
                     ? 500
                     : 200;
             String body;
