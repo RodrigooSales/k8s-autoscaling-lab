@@ -34,10 +34,9 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 
 - `metric` e `evaluate`: alinhados nos caminhos exercitados pelo experimento e cobertos por fixtures estaticas.
 - `config.yaml`: valores comportamentais comparados automaticamente com a configuracao Python.
-- `adapt_*`: cobertos pelas fixtures de contrato existentes.
+- `adapt_replicas`, `adapt_cpu` e `adapt_tag`: fluxo Kubernetes coberto por traces HTTP estaticos equivalentes ao Python.
 - Diferencas conhecidas (edge cases):
-  - parser de imagem em `adapt_tag`: Java usa parser simplificado, suficiente para os cenarios atuais, mas menos flexivel que o regex do Python.
-  - chamadas Kubernetes e persistencia de `initialData` dos modos `adapt_*` ainda precisam ser equiparadas.
+  - persistencia de `initialData`, erros de processo e logging ainda precisam ser equiparados.
 
 ## Estrutura de pacotes
 
@@ -89,6 +88,7 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 - `ContractParityTest`: paridade de `metric`, `evaluate` e `adapt_*` com fixtures em `contracts/cases/`.
 - `ConfigParityTest`: compara timeouts, limites, metrica, intervalo e estrategias com o Python.
 - `QuantityParityTest`: cobre os formatos de metrica usados pelo experimento.
+- `Adapt*RuntimeTest`: compara ordem, metodo, endpoint e payload sem exigir cluster real.
 
 Os testes Java nao executam scripts Python. A validacao in-cluster continua necessaria para os efeitos Kubernetes.
 

@@ -22,6 +22,10 @@
   "stdout": {
     "result": "error"
   },
-  "implicitInput": {},
+  "implicitInput": {
+    "kubernetesState": {
+      "deployment_loaded": true
+    }
+  },
   "notes": "Parameter cpu_multiplier must be numeric."
 }

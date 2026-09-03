@@ -1,13 +1,19 @@
 package org.csajava.runtime.adapt.tag;
 
+import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.ApiClient;
+import io.kubernetes.client.openapi.ApiException;
+import io.kubernetes.client.openapi.JSON;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import io.kubernetes.client.openapi.models.V1Container;
 import io.kubernetes.client.openapi.models.V1Deployment;
 import io.kubernetes.client.util.Config;
+import io.kubernetes.client.util.PatchUtils;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.csajava.context.RuntimeContext;
 import org.csajava.runtime.adapt.AdaptSupport;
 import org.csajava.runtime.initialdata.InitialDataStore;
@@ -20,22 +26,26 @@ public final class AdaptTagRuntime {
     private static final String PARAM_UPDATE_CPU = "update_cpu";
 
     private static final String CONTAINER_ZNN = "znn";
+    private static final Pattern IMAGE_PATTERN = Pattern.compile(
+            "^(?<repository>[\\w.\\-_]+((?::\\d+|)(?=/[a-z0-9._-]+/[a-z0-9._-]+))|)"
+                    + "(?:/|)(?<image>[a-z0-9.\\-_]+(?:/[a-z0-9.\\-_]+|))"
+                    + "(?::(?<tag>[\\w.\\-_]{1,127})|)$",
+            Pattern.UNICODE_CHARACTER_CLASS);
 
     private AdaptTagRuntime() {
     }
 
     public static Object evaluate(RuntimeContext context) {
-        Boolean tagUp = JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_TAG_UP);
-        if (tagUp == null) {
-            return AdaptSupport.error();
-        }
-        boolean updateCpu = Boolean.TRUE.equals(
-                JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_UPDATE_CPU));
-
         if (!context.hints().isEmpty()) {
+            Boolean tagUp = JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_TAG_UP);
+            if (tagUp == null) {
+                return AdaptSupport.error();
+            }
+            boolean updateCpu = Boolean.TRUE.equals(
+                    JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_UPDATE_CPU));
             return evaluateFromHints(context, tagUp, updateCpu);
         }
-        return evaluateInCluster(context, tagUp, updateCpu);
+        return evaluateInCluster(context);
     }
 
     private static Object evaluateFromHints(RuntimeContext context, boolean tagUp, boolean updateCpu) {
@@ -76,7 +86,7 @@ public final class AdaptTagRuntime {
         return patchSuccess ? AdaptSupport.tag(newTag) : AdaptSupport.error();
     }
 
-    private static Object evaluateInCluster(RuntimeContext context, boolean tagUp, boolean updateCpu) {
+    private static Object evaluateInCluster(RuntimeContext context) {
         String name = AdaptSupport.resourceName(context);
         String namespace = AdaptSupport.resourceNamespace(context);
         if (name == null || namespace == null) {
@@ -88,11 +98,34 @@ public final class AdaptTagRuntime {
             AppsV1Api apps = new AppsV1Api(client);
             CoreV1Api core = new CoreV1Api(client);
             CustomObjectsApi customObjects = new CustomObjectsApi(client);
+            InitialDataStore store = new InitialDataStore(context, core, customObjects);
 
+            return adaptInCluster(context, client, apps, core, store);
+        } catch (Exception e) {
+            return AdaptSupport.error();
+        }
+    }
+
+    static Object adaptInCluster(
+            RuntimeContext context,
+            ApiClient client,
+            AppsV1Api apps,
+            CoreV1Api core,
+            InitialDataStore store) {
+        String name = AdaptSupport.resourceName(context);
+        String namespace = AdaptSupport.resourceNamespace(context);
+        try {
             V1Deployment deployment = apps.readNamespacedDeployment(name, namespace).execute();
             if (deployment == null) {
                 return AdaptSupport.error();
             }
+
+            Boolean tagUp = JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_TAG_UP);
+            if (tagUp == null) {
+                return AdaptSupport.error();
+            }
+            boolean updateCpu = Boolean.TRUE.equals(
+                    JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_UPDATE_CPU));
 
             if (AdaptSupport.rolloutInProgress(deployment)) {
                 return AdaptSupport.skip();
@@ -108,7 +141,6 @@ public final class AdaptTagRuntime {
                 return AdaptSupport.error();
             }
 
-            InitialDataStore store = new InitialDataStore(context, core, customObjects);
             store.storeTag(currentTag);
 
             if (tagUp) {
@@ -144,8 +176,15 @@ public final class AdaptTagRuntime {
                 }
             }
 
-            apps.replaceNamespacedDeployment(name, namespace, deployment).execute();
+            V1Patch patch = new V1Patch(JSON.serialize(deployment));
+            PatchUtils.patch(
+                    V1Deployment.class,
+                    () -> apps.patchNamespacedDeployment(name, namespace, patch).buildCall(null),
+                    V1Patch.PATCH_FORMAT_STRATEGIC_MERGE_PATCH,
+                    client);
             return AdaptSupport.tag(newTag);
+        } catch (ApiException e) {
+            return AdaptSupport.error();
         } catch (Exception e) {
             return AdaptSupport.error();
         }
@@ -165,26 +204,30 @@ public final class AdaptTagRuntime {
     }
 
     static String extractTag(String image) {
-        if (image == null || image.isBlank()) {
-            return null;
-        }
-
-        int slash = image.lastIndexOf('/');
-        int colon = image.lastIndexOf(':');
-        if (colon <= slash || colon == image.length() - 1) {
-            return null;
-        }
-        return image.substring(colon + 1);
+        ImageParts parts = imageParts(image);
+        return parts == null ? null : parts.tag();
     }
 
     static String replaceTag(String image, String tag) {
-        if (image == null || image.isBlank() || tag == null || tag.isBlank()) {
+        ImageParts parts = imageParts(image);
+        if (parts == null) {
             return image;
         }
+        String prefix = parts.repository().isEmpty() ? "" : parts.repository() + "/";
+        return prefix + parts.image() + ":" + tag;
+    }
 
-        int slash = image.lastIndexOf('/');
-        int colon = image.lastIndexOf(':');
-        String withoutTag = colon > slash ? image.substring(0, colon) : image;
-        return withoutTag + ":" + tag;
+    private static ImageParts imageParts(String image) {
+        if (image == null) {
+            return null;
+        }
+        Matcher matcher = IMAGE_PATTERN.matcher(image);
+        if (!matcher.matches()) {
+            return null;
+        }
+        return new ImageParts(matcher.group("repository"), matcher.group("image"), matcher.group("tag"));
+    }
+
+    private record ImageParts(String repository, String image, String tag) {
     }
 }

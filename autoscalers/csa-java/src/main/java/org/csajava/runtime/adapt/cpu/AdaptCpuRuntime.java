@@ -30,15 +30,14 @@ public final class AdaptCpuRuntime {
     }
 
     public static Object evaluate(RuntimeContext context) {
-        Double multiplier = readMultiplier(context);
-        if (multiplier == null) {
-            return AdaptSupport.error();
-        }
-
         if (!context.hints().isEmpty()) {
+            Double multiplier = readMultiplier(context);
+            if (multiplier == null) {
+                return AdaptSupport.error();
+            }
             return evaluateFromHints(context, multiplier);
         }
-        return evaluateInCluster(context, multiplier);
+        return evaluateInCluster(context);
     }
 
     private static Object evaluateFromHints(RuntimeContext context, double multiplier) {
@@ -78,7 +77,7 @@ public final class AdaptCpuRuntime {
         return AdaptSupport.cpu(newMcpu);
     }
 
-    private static Object evaluateInCluster(RuntimeContext context, double multiplier) {
+    private static Object evaluateInCluster(RuntimeContext context) {
         String name = AdaptSupport.resourceName(context);
         String namespace = AdaptSupport.resourceNamespace(context);
         if (name == null || namespace == null) {
@@ -90,9 +89,30 @@ public final class AdaptCpuRuntime {
             AppsV1Api apps = new AppsV1Api(client);
             CoreV1Api core = new CoreV1Api(client);
             CustomObjectsApi customObjects = new CustomObjectsApi(client);
+            InitialDataStore store = new InitialDataStore(context, core, customObjects);
 
+            return adaptInCluster(context, client, apps, core, store);
+        } catch (Exception e) {
+            return AdaptSupport.error(e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage()));
+        }
+    }
+
+    static Object adaptInCluster(
+            RuntimeContext context,
+            ApiClient client,
+            AppsV1Api apps,
+            CoreV1Api core,
+            InitialDataStore store) {
+        String name = AdaptSupport.resourceName(context);
+        String namespace = AdaptSupport.resourceNamespace(context);
+        try {
             V1Deployment deployment = apps.readNamespacedDeployment(name, namespace).execute();
             if (deployment == null) {
+                return AdaptSupport.error();
+            }
+
+            Double multiplier = readMultiplier(context);
+            if (multiplier == null) {
                 return AdaptSupport.error();
             }
 
@@ -101,7 +121,6 @@ public final class AdaptCpuRuntime {
             }
 
             int maxCpu = AdaptSupport.configInt(context, "maxCPU", 1000);
-            InitialDataStore store = new InitialDataStore(context, core, customObjects);
 
             Integer initialMcpu = store.getStoredCpuLimit();
             if (initialMcpu == null || initialMcpu <= 0) {
@@ -118,7 +137,7 @@ public final class AdaptCpuRuntime {
                 return AdaptSupport.error();
             }
 
-            Integer currentMcpu = AdaptSupport.currentMcpu(pods);
+            Integer currentMcpu = AdaptSupport.currentMcpu(AdaptSupport.runningPods(core, namespace, deployment));
             if (currentMcpu == null || currentMcpu <= 0) {
                 return AdaptSupport.error();
             }
@@ -171,7 +190,13 @@ public final class AdaptCpuRuntime {
 
     static Double readMultiplier(RuntimeContext context) {
         JsonElement raw = JsonUtil.elementPath(context.stdinJson(), "evaluation", "parameters", PARAM_CPU_MULTIPLIER);
-        if (raw == null || !raw.isJsonPrimitive() || !raw.getAsJsonPrimitive().isNumber()) {
+        if (raw == null || !raw.isJsonPrimitive()) {
+            return null;
+        }
+        if (raw.getAsJsonPrimitive().isBoolean()) {
+            return raw.getAsBoolean() ? 1.0 : 0.0;
+        }
+        if (!raw.getAsJsonPrimitive().isNumber()) {
             return null;
         }
         return raw.getAsDouble();
