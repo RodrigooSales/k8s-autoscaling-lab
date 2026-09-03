@@ -76,6 +76,33 @@ public class EvaluateDifferentialTest {
         }
     }
 
+    @Test
+    public void matchesPythonInvalidInputMatrix() throws Exception {
+        List<Case> cases = List.of(
+                rawCase("missing metadata", """
+                        {"resource":{"spec":{"replicas":1}},"metrics":[]}
+                        """),
+                rawCase("missing replicas", """
+                        {"resource":{"metadata":{"name":"kube-znn","namespace":"default"},"spec":{}},"metrics":[]}
+                        """),
+                rawCase("empty metrics", """
+                        {"resource":{"metadata":{"name":"kube-znn","namespace":"default"},"spec":{"replicas":1}},"metrics":[]}
+                        """),
+                rawCase("malformed metric JSON", """
+                        {"resource":{"metadata":{"name":"kube-znn","namespace":"default"},"spec":{"replicas":1}},"metrics":[{"value":"{"}]}
+                        """),
+                rawCase("missing metric values", """
+                        {"resource":{"metadata":{"name":"kube-znn","namespace":"default"},"spec":{"replicas":1}},"metrics":[{"value":"{}"}]}
+                        """),
+                rawCase("zero target", """
+                        {"resource":{"metadata":{"name":"kube-znn","namespace":"default"},"spec":{"replicas":1}},"metrics":[{"value":"{\\"current_value\\":\\"1\\",\\"target_value\\":\\"0\\"}"}]}
+                        """));
+
+        for (Case testCase : cases) {
+            assertEquals(testCase.name(), runPython(testCase), runJava(testCase));
+        }
+    }
+
     private static ProcessResult runPython(Case testCase) throws Exception {
         Path oracle = Path.of(EvaluateDifferentialTest.class
                 .getResource("/python_evaluate_oracle.py").toURI());
@@ -138,6 +165,14 @@ public class EvaluateDifferentialTest {
         payload.add("stdin", stdin);
         payload.add("config", GSON.toJsonTree(config));
         payload.add("state", GSON.toJsonTree(state));
+        return new Case(name, payload);
+    }
+
+    private static Case rawCase(String name, String stdin) {
+        JsonObject payload = new JsonObject();
+        payload.add("stdin", JsonParser.parseString(stdin).getAsJsonObject());
+        payload.add("config", GSON.toJsonTree(Map.of("enabled_strategies", List.of("adapt_cpu"))));
+        payload.add("state", GSON.toJsonTree(state(500, 500)));
         return new Case(name, payload);
     }
 
