@@ -53,6 +53,13 @@ public class AdaptTagRuntimeTest {
     }
 
     @Test
+    public void comparesStoredCpuWithPythonTypeSemantics() {
+        assertEquals(true, AdaptTagRuntime.shouldUpdateCpu("", 500));
+        assertEquals(true, AdaptTagRuntime.shouldUpdateCpu("500", 500));
+        assertEquals(false, AdaptTagRuntime.shouldUpdateCpu(500, 500));
+    }
+
+    @Test
     public void matchesPythonTraceAndDeploymentPatchWhenUpdatingCpu() {
         TagApi api = new TagApi("registry.k8s.lab:5000/project/kube-znn:600k", false, null);
         RuntimeContext context = context(false, true);

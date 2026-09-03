@@ -158,14 +158,15 @@ public final class AdaptTagRuntime {
             znn.setImage(replaceTag(znn.getImage(), newTag));
 
             if (updateCpu) {
-                Integer initialMcpu = store.getStoredCpuLimit();
+                Object initialMcpu = store.getStoredCpuLimitValue();
                 if (initialMcpu == null) {
-                    initialMcpu = AdaptSupport.specMcpu(deployment);
-                    store.storeCpuLimit(initialMcpu);
+                    Integer specMcpu = AdaptSupport.specMcpu(deployment);
+                    store.storeCpuLimit(specMcpu);
+                    initialMcpu = specMcpu;
                 }
 
                 Integer currentMcpu = AdaptSupport.currentMcpu(AdaptSupport.runningPods(core, namespace, deployment));
-                if (currentMcpu != null && initialMcpu != null && !currentMcpu.equals(initialMcpu)
+                if (currentMcpu != null && shouldUpdateCpu(initialMcpu, currentMcpu)
                         && deployment.getSpec() != null
                         && deployment.getSpec().getTemplate() != null
                         && deployment.getSpec().getTemplate().getSpec() != null
@@ -188,6 +189,16 @@ public final class AdaptTagRuntime {
         } catch (Exception e) {
             return AdaptSupport.error();
         }
+    }
+
+    static boolean shouldUpdateCpu(Object initialMcpu, int currentMcpu) {
+        if (initialMcpu instanceof Number number) {
+            return number.doubleValue() != currentMcpu;
+        }
+        if (initialMcpu instanceof Boolean bool) {
+            return (bool ? 1 : 0) != currentMcpu;
+        }
+        return true;
     }
 
     static String adjacentTag(String currentTag, boolean up) {
