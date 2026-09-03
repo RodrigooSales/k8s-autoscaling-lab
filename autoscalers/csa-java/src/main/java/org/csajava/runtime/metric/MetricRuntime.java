@@ -1,10 +1,8 @@
 package org.csajava.runtime.metric;
 
-import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.csajava.context.RuntimeContext;
-import org.csajava.model.ResultError;
-import org.csajava.util.JsonUtil;
 
 public final class MetricRuntime {
     private MetricRuntime() {
@@ -12,28 +10,42 @@ public final class MetricRuntime {
 
     public static Object evaluate(RuntimeContext context) {
         JsonObject stdin = context.stdinJson();
-
-        JsonObject resource = JsonUtil.object(stdin, "resource");
-        JsonObject resourceSpec = JsonUtil.object(resource, "spec");
-        Integer currentReplicas = JsonUtil.integer(resourceSpec, "replicas");
-
-        JsonArray kmetrics = JsonUtil.array(stdin, "kubernetesMetrics");
-        if (kmetrics == null || kmetrics.isEmpty() || !kmetrics.get(0).isJsonObject()) {
-            return new ResultError("error", "missing kubernetesMetrics[0]");
-        }
-
-        JsonObject firstMetric = kmetrics.get(0).getAsJsonObject();
-        String targetValue = JsonUtil.stringPath(firstMetric, "spec", "external", "target", "value");
-        String currentValue = JsonUtil.stringPath(firstMetric, "external", "current", "value");
-
-        if (currentReplicas == null || targetValue == null || currentValue == null) {
-            return new ResultError("error", "invalid metric input payload");
-        }
+        JsonElement currentReplicas = required(stdin, "resource", "spec", "replicas");
+        JsonElement targetValue = required(
+                stdin, "kubernetesMetrics", "0", "spec", "external", "target", "value");
+        JsonElement currentValue = required(
+                stdin, "kubernetesMetrics", "0", "external", "current", "value");
 
         JsonObject out = new JsonObject();
-        out.addProperty("current_replicas", currentReplicas);
-        out.addProperty("target_value", targetValue);
-        out.addProperty("current_value", currentValue);
+        out.add("current_replicas", currentReplicas.deepCopy());
+        out.add("target_value", targetValue.deepCopy());
+        out.add("current_value", currentValue.deepCopy());
         return out;
+    }
+
+    private static JsonElement required(JsonObject source, String... path) {
+        JsonElement current = source;
+        for (String part : path) {
+            if (current == null || current.isJsonNull()) {
+                throw new IllegalArgumentException("missing metric input");
+            }
+            if (current.isJsonArray()) {
+                int index;
+                try {
+                    index = Integer.parseInt(part);
+                } catch (NumberFormatException error) {
+                    throw new IllegalArgumentException("invalid metric input", error);
+                }
+                if (index >= current.getAsJsonArray().size()) {
+                    throw new IllegalArgumentException("missing metric input");
+                }
+                current = current.getAsJsonArray().get(index);
+            } else if (current.isJsonObject() && current.getAsJsonObject().has(part)) {
+                current = current.getAsJsonObject().get(part);
+            } else {
+                throw new IllegalArgumentException("missing metric input");
+            }
+        }
+        return current;
     }
 }
