@@ -32,13 +32,12 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 
 ## Paridade funcional atual
 
-- Estado geral: muito proximo da implementacao Python para os fluxos principais.
-- Cobertura automatizada: fixtures de contrato para `metric`, `evaluate` e `adapt_*`.
+- `metric` e `evaluate`: alinhados ao comportamento Python e cobertos por testes diferenciais que executam os scripts Python reais.
+- `config.yaml`: valores comportamentais comparados automaticamente com a configuracao Python.
+- `adapt_*`: cobertos pelas fixtures de contrato existentes; a prova diferencial desses modos ainda nao foi implementada.
 - Diferencas conhecidas (edge cases):
-  - `evaluate` sem adaptacao: Python tende a nao escrever saida; Java retorna `{"result":"skip", ...}`.
-  - baseline de `initial_mcpu` em `evaluate`: Python usa `initial_data`; Java hoje usa fallback pela spec do deployment quando necessario.
-  - entradas invalidas: em alguns caminhos o Python retorna sem JSON; Java tende a retornar `{"result":"error"}`.
   - parser de imagem em `adapt_tag`: Java usa parser simplificado, suficiente para os cenarios atuais, mas menos flexivel que o regex do Python.
+  - chamadas Kubernetes e persistencia de `initialData` dos modos `adapt_*` ainda precisam ser equiparadas.
 
 ## Estrutura de pacotes
 
@@ -88,8 +87,11 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 - `CpuQuantityTest`: parse/format de CPU.
 - `RuntimeContextTest`: parse de stdin e carga de config.
 - `ContractParityTest`: paridade de `metric`, `evaluate` e `adapt_*` com fixtures em `contracts/cases/`.
+- `ConfigParityTest`: compara timeouts, limites, metrica, intervalo e estrategias com o Python.
+- `MetricProcessParityTest`: executa Java e o script Python real e compara stdout e codigo de saida.
+- `EvaluateDifferentialTest`: executa o `evaluate.py` real com estado Kubernetes controlado e compara a matriz de decisoes com Java.
 
-Obs: a paridade coberta por fixture garante os cenarios congelados do projeto. Ainda ha comportamentos de borda que devem ser validados no cluster.
+Os testes diferenciais exigem o executavel `python`. A validacao in-cluster continua necessaria para os efeitos Kubernetes.
 
 Comandos:
 
