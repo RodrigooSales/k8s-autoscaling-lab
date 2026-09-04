@@ -10,12 +10,12 @@ RUN cd /home/gradle/src/build/distributions/ && unzip /home/gradle/src/build/dis
 FROM registry.k8s.lab/custom-self-adapter:alpine-latest
 
 WORKDIR /app
-
+ARG TAG=vq
 
 RUN apk add --no-cache jq unzip openjdk21-jre || apk add --no-cache jq unzip openjdk21
 ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
-ADD config.yaml /
+COPY profiles/${TAG}.yaml /config.yaml
 
 COPY --from=build /home/gradle/src/build/distributions/csa-java /app/csa-java

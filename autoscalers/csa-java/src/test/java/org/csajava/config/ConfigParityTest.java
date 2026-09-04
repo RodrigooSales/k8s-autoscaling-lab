@@ -34,6 +34,34 @@ public class ConfigParityTest {
         }
     }
 
+    @Test
+    public void versionsTheRecoveredPythonProfiles() throws Exception {
+        Map<String, List<String>> expected = Map.of(
+                "h", List.of("adapt_replicas"),
+                "hq", List.of("adapt_replicas", "adapt_tag"),
+                "v", List.of("adapt_cpu"),
+                "vq", List.of("adapt_cpu", "adapt_tag"));
+        Map<String, Object> canonical = load(Path.of("config.yaml"));
+
+        for (Map.Entry<String, List<String>> profile : expected.entrySet()) {
+            Map<String, Object> actual = load(Path.of("profiles", profile.getKey() + ".yaml"));
+            assertEquals(profile.getValue(), actual.get("enabled_strategies"));
+            for (String key : List.of(
+                    "metric",
+                    "evaluate",
+                    "adapt",
+                    "interval",
+                    "minReplicas",
+                    "maxReplicas",
+                    "maxCPU",
+                    "kubernetesMetricSpecs",
+                    "requireKubernetesMetrics",
+                    "logVerbosity")) {
+                assertEquals(profile.getKey() + ": " + key, canonical.get(key), actual.get(key));
+            }
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> load(Path path) throws Exception {
         try (InputStream input = Files.newInputStream(path)) {
