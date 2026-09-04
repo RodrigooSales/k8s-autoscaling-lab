@@ -53,6 +53,11 @@ public class InitialDataStoreTest {
         assertTrue(api.patchBody.has("spec"));
         assertEquals("keep", api.patchBody.getAsJsonObject("metadata")
                 .getAsJsonObject("annotations").get("unrelated").getAsString());
+        assertEquals(
+                "{\"cpu_limit\": \"500\", \"tag\": \"600k\"}",
+                api.patchBody.getAsJsonObject("metadata")
+                        .getAsJsonObject("annotations").get(INITIAL_DATA).getAsString());
+        assertFalse(api.patchBody.getAsJsonObject("metadata").has("finalizers"));
 
         JsonObject initialData = patchedInitialData(api);
         assertEquals("500", initialData.get("cpu_limit").getAsString());

@@ -4,7 +4,7 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 
 ## Status da migracao
 
-- [x] Contratos de entrada e saida congelados em `contracts/`.
+- [x] Contratos validados diferencialmente contra o Python real.
 - [x] Runtime base Java (CLI, stdin/stdout, config, dispatcher).
 - [x] Migracao de `metric` com paridade de contrato.
 - [x] Migracao de `evaluate` com paridade de contrato.
@@ -32,8 +32,9 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 
 ## Paridade funcional atual
 
-- `metric` e `evaluate`: alinhados nos caminhos exercitados pelo experimento e cobertos por fixtures estaticas.
+- `metric` e `evaluate`: alinhados nos caminhos exercitados pelo experimento e cobertos pelo oracle Python.
 - `config.yaml`: valores comportamentais comparados automaticamente com a configuracao Python.
+- `profiles/{h,hq,v,vq}.yaml`: configuracoes versionadas recuperadas das quatro imagens Python publicadas.
 - `adapt_replicas`, `adapt_cpu` e `adapt_tag`: fluxo Kubernetes coberto por traces HTTP estaticos equivalentes ao Python.
 - `initialData`: sem cache local; releitura, merge e PATCH do Pod seguem o fluxo Python.
 - Processo: stdout, codigos de saida e logs seguem o Python nos caminhos dos experimentos e falhas cobertas.
@@ -87,20 +88,23 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 - `CliTest`: parse de argumentos e erros de uso.
 - `CpuQuantityTest`: parse/format de CPU.
 - `RuntimeContextTest`: parse de stdin e carga de config.
-- `ContractParityTest`: paridade de `metric`, `evaluate` e `adapt_*` com fixtures em `contracts/cases/`.
 - `ConfigParityTest`: compara timeouts, limites, metrica, intervalo e estrategias com o Python.
 - `QuantityParityTest`: cobre os formatos de metrica usados pelo experimento.
 - `Adapt*RuntimeTest`: compara ordem, metodo, endpoint e payload sem exigir cluster real.
 - `InitialDataStoreTest`: cobre atraso de reconciliacao, merge, sequencia HTTP e falhas de persistencia.
 - `AppTest`, `JsonOutTest` e `RuntimeLoggingTest`: cobrem stdout, exit code e logs normalizados.
+- `parity/run.py`: executa primeiro os scripts Python reais como oracle e compara stdout, stderr, exit code, log, trace HTTP e estado final com o Java.
 
-Os testes Java nao executam scripts Python. A validacao in-cluster continua necessaria para os efeitos Kubernetes.
+O harness diferencial redireciona ambos os clientes para o mesmo servidor Kubernetes falso. Ele nao altera arquivos em `autoscalers/csa/` e nao mantem respostas esperadas manualmente.
 
 Comandos:
 
 ```bash
 ./gradlew test
 ./gradlew build
+python3 -m venv .venv-parity
+.venv-parity/bin/pip install -r parity/requirements.txt
+CSA_PYTHON=.venv-parity/bin/python ./gradlew differentialTest
 ```
 
 ## Infra para cluster
@@ -115,11 +119,11 @@ Comandos:
 
 ## Execucao local
 
-Exemplo direto com fixture de contrato:
+Exemplos diretos:
 
 ```bash
-jq -c '.stdin' contracts/cases/metric.basic.json | ./gradlew run --args='-m metric'
-jq -c '.stdin' contracts/cases/evaluate.high_load_cpu.json | ./gradlew run --args='-m evaluate'
+printf '%s' '{"resource":{"spec":{"replicas":2}},"kubernetesMetrics":[{"spec":{"external":{"target":{"value":"1000"}}},"external":{"current":{"value":"1300000"}}}]}' | ./gradlew run --args='-m metric'
+.venv-parity/bin/python parity/run.py --case metric.basic
 ```
 
 ## Docker
@@ -143,6 +147,8 @@ TAG=hq ./build_csa-java.sh
 TAG=v ./build_csa-java.sh
 TAG=vq ./build_csa-java.sh
 ```
+
+Cada build copia `profiles/<TAG>.yaml` para `/config.yaml`. Os perfis foram recuperados das imagens Python publicadas no registry local: `h@sha256:f62480de9f62a60f7c198decb2122b037dd3c823a3d796b6ca76cd04bc2e47bb`, `hq@sha256:8550bb657400033562628e96e7da12f6dd9c81d7a5938aa4dc2ac2dd3c2abdf8`, `v@sha256:5dc7ed5ccc27ed80da1659cbba45408cc47214f638f2961d5e081fee1194db9e` e `vq@sha256:cdf666f3e8adb0f4e30ed58a5549b6d4b0023e96556916e72699f6b8aaead977`. Somente `enabled_strategies` varia: `h` usa replicas, `hq` replicas e tag, `v` CPU, e `vq` CPU e tag.
 
 ## Proximos passos do plano
 

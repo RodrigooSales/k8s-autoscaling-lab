@@ -3,18 +3,18 @@ package org.csajava.runtime.adapt.tag;
 import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
-import io.kubernetes.client.openapi.JSON;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import io.kubernetes.client.openapi.models.V1Container;
 import io.kubernetes.client.openapi.models.V1Deployment;
-import io.kubernetes.client.util.Config;
 import io.kubernetes.client.util.PatchUtils;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.csajava.context.RuntimeContext;
+import org.csajava.kubernetes.KubernetesClient;
+import org.csajava.kubernetes.KubernetesJson;
 import org.csajava.logging.AdapterLogger;
 import org.csajava.runtime.adapt.AdaptSupport;
 import org.csajava.runtime.initialdata.InitialDataStore;
@@ -109,7 +109,7 @@ public final class AdaptTagRuntime {
 
         ApiClient client;
         try {
-            client = Config.fromCluster();
+            client = KubernetesClient.load();
         } catch (Exception e) {
             logger.error("Failed to load in-cluster config: " + e);
             return null;
@@ -219,7 +219,7 @@ public final class AdaptTagRuntime {
         }
 
         try {
-            V1Patch patch = new V1Patch(JSON.serialize(deployment));
+            V1Patch patch = new V1Patch(KubernetesJson.serialize(deployment));
             PatchUtils.patch(
                     V1Deployment.class,
                     () -> apps.patchNamespacedDeployment(name, namespace, patch).buildCall(null),

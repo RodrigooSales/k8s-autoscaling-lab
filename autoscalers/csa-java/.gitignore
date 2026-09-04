@@ -6,6 +6,7 @@ build
 bin
 .idea
 .settings
+.venv*
 
 
 /gradle

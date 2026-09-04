@@ -12,6 +12,7 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.13.2'
     implementation 'io.kubernetes:client-java:26.0.0'
     implementation 'org.yaml:snakeyaml:2.6'
+    runtimeOnly 'org.slf4j:slf4j-nop:2.0.17'
 }
 
 java {
@@ -22,4 +23,9 @@ java {
 
 application {
     mainClass = 'org.csajava.App'
+}
+
+tasks.register('differentialTest', Exec) {
+    dependsOn installDist
+    commandLine providers.environmentVariable('CSA_PYTHON').getOrElse('python3'), 'parity/run.py'
 }

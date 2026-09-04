@@ -17,14 +17,15 @@ import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.openapi.models.V1ResourceRequirements;
-import io.kubernetes.client.util.Config;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.csajava.context.RuntimeContext;
 import org.csajava.io.JsonOut;
+import org.csajava.kubernetes.KubernetesClient;
 import org.csajava.logging.AdapterLogger;
 import org.csajava.runtime.initialdata.InitialDataStore;
 import org.csajava.util.CpuQuantity;
@@ -74,6 +75,10 @@ public final class EvaluateRuntime {
             throw new IllegalArgumentException("missing resource.metadata name/namespace");
         }
 
+        KubernetesState kubernetes = context.hints().isEmpty()
+                ? loadKubernetesState(deploymentName, deploymentNamespace, logger)
+                : null;
+
         logger.info("Starting evaluate script");
 
         Map<String, Object> config = context.loadConfig();
@@ -104,7 +109,7 @@ public final class EvaluateRuntime {
         logger.info("rate " + currentValue + " / " + scaledTarget + " = " + rate);
         logger.info("plan for rate " + rate + "; stragegies " + strategiesText(enabledStrategies));
 
-        RuntimeContext hinted = context.withHints(resolveHints(context, deploymentName, deploymentNamespace));
+        RuntimeContext hinted = context.withHints(resolveHints(context, kubernetes));
         Integer currentMcpuValue = YamlMap.integer(hinted.hints(), "current_mcpu");
         if (currentMcpuValue == null || currentMcpuValue == 0) {
             logger.error("Current CPU limit not found or unparsable");
@@ -234,7 +239,10 @@ public final class EvaluateRuntime {
     }
 
     private static Map<String, Object> mapOf(String key1, Object value1, String key2, Object value2) {
-        return Map.of(key1, value1, key2, value2);
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put(key1, value1);
+        values.put(key2, value2);
+        return values;
     }
 
     private static BigInteger parseQuantityInt(String raw) {
@@ -278,31 +286,51 @@ public final class EvaluateRuntime {
         return quantity.toBigInteger();
     }
 
-    private static Map<String, Object> resolveHints(RuntimeContext context, String name, String namespace) {
+    private static KubernetesState loadKubernetesState(String name, String namespace, AdapterLogger logger) {
+        ApiClient client;
+        try {
+            client = KubernetesClient.load();
+        } catch (Exception error) {
+            logger.error("Failed to load in-cluster config: " + error);
+            throw new IllegalStateException("failed to load Kubernetes config", error);
+        }
+
+        AppsV1Api apps = new AppsV1Api(client);
+        try {
+            V1Deployment deployment = apps.readNamespacedDeployment(name, namespace).execute();
+            if (deployment == null) {
+                logger.error("Deployment " + namespace + "/" + name + " not found");
+                throw new IllegalStateException("deployment not found");
+            }
+            return new KubernetesState(
+                    new CoreV1Api(client),
+                    new CustomObjectsApi(client),
+                    deployment,
+                    namespace);
+        } catch (ApiException error) {
+            logger.error("Failed to read Deployment " + namespace + "/" + name + ": " + error);
+            throw new IllegalStateException("failed to read deployment", error);
+        }
+    }
+
+    private static Map<String, Object> resolveHints(RuntimeContext context, KubernetesState kubernetes) {
         if (!context.hints().isEmpty()) {
             return context.hints();
         }
 
         try {
-            ApiClient client = Config.fromCluster();
-            AppsV1Api apps = new AppsV1Api(client);
-            CoreV1Api core = new CoreV1Api(client);
-            CustomObjectsApi customObjects = new CustomObjectsApi(client);
-
-            V1Deployment deployment = apps.readNamespacedDeployment(name, namespace).execute();
-            if (deployment == null) {
-                throw new IllegalStateException("deployment not found");
-            }
-
-            Integer currentMcpu = readCurrentMcpu(core, namespace, deployment);
-            InitialDataStore store = new InitialDataStore(context, core, customObjects);
-            Integer initialMcpu = store.getStoredCpuLimit();
+            Integer currentMcpu = readCurrentMcpu(
+                    kubernetes.core(), kubernetes.namespace(), kubernetes.deployment());
             Map<String, Object> state = new HashMap<>();
-            if (currentMcpu != null) {
-                state.put("current_mcpu", currentMcpu);
+            if (currentMcpu == null || currentMcpu == 0) {
+                return state;
             }
+            state.put("current_mcpu", currentMcpu);
+
+            InitialDataStore store = new InitialDataStore(context, kubernetes.core(), kubernetes.customObjects());
+            Integer initialMcpu = store.getStoredCpuLimit();
             if (initialMcpu == null) {
-                store.storeCpuLimit(readSpecMcpu(deployment));
+                store.storeCpuLimit(readSpecMcpu(kubernetes.deployment()));
                 state.put("initial_mcpu", 0);
             } else {
                 state.put("initial_mcpu", initialMcpu);
@@ -313,6 +341,13 @@ public final class EvaluateRuntime {
         } catch (Exception e) {
             throw new IllegalStateException("failed to resolve Kubernetes state", e);
         }
+    }
+
+    private record KubernetesState(
+            CoreV1Api core,
+            CustomObjectsApi customObjects,
+            V1Deployment deployment,
+            String namespace) {
     }
 
     private static Integer readSpecMcpu(V1Deployment deployment) {

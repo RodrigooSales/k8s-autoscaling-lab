@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.ApiException;
-import io.kubernetes.client.openapi.JSON;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import io.kubernetes.client.openapi.models.V1Pod;
@@ -15,6 +14,8 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import org.csajava.context.RuntimeContext;
+import org.csajava.io.JsonOut;
+import org.csajava.kubernetes.KubernetesJson;
 import org.csajava.logging.AdapterLogger;
 
 public final class InitialDataStore {
@@ -148,10 +149,10 @@ public final class InitialDataStore {
         if (selfPod.getMetadata().getAnnotations() == null) {
             selfPod.getMetadata().setAnnotations(new HashMap<>());
         }
-        selfPod.getMetadata().getAnnotations().put(ANNOTATION_TAG, GSON.toJson(initialData));
+        selfPod.getMetadata().getAnnotations().put(ANNOTATION_TAG, JsonOut.stringify(initialData));
 
         try {
-            V1Patch patch = new V1Patch(JSON.serialize(selfPod));
+            V1Patch patch = new V1Patch(KubernetesJson.serialize(selfPod));
             PatchUtils.patch(
                     V1Pod.class,
                     () -> core.patchNamespacedPod(csaName, csaNamespace, patch).buildCall(null),

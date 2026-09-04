@@ -1,6 +1,7 @@
 package org.csajava.runtime.adapt.replicas;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.google.gson.JsonObject;
@@ -69,6 +70,8 @@ public class AdaptReplicasRuntimeTest {
         assertEquals(5, body.getAsJsonObject("spec").get("replicas").getAsInt());
         assertEquals("7", body.getAsJsonObject("metadata").get("resourceVersion").getAsString());
         assertTrue(body.getAsJsonObject("spec").has("template"));
+        assertFalse(body.getAsJsonObject("metadata").has("annotations"));
+        assertFalse(body.getAsJsonObject("spec").getAsJsonObject("selector").has("matchExpressions"));
     }
 
     @Test

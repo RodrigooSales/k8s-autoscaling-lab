@@ -14,7 +14,7 @@ public final class App {
     }
 
     public static void main(String[] args) {
-        int exitCode = run(args, "/config.yaml");
+        int exitCode = run(args, System.getenv().getOrDefault("CSA_CONFIG_PATH", "/config.yaml"));
         if (exitCode != 0) {
             System.exit(exitCode);
         }

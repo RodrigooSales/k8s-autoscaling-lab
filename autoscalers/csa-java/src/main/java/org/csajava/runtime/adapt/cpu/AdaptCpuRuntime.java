@@ -12,10 +12,10 @@ import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import io.kubernetes.client.openapi.models.V1Deployment;
 import io.kubernetes.client.openapi.models.V1Pod;
-import io.kubernetes.client.util.Config;
 import io.kubernetes.client.util.PatchUtils;
 import java.util.List;
 import org.csajava.context.RuntimeContext;
+import org.csajava.kubernetes.KubernetesClient;
 import org.csajava.logging.AdapterLogger;
 import org.csajava.runtime.adapt.AdaptSupport;
 import org.csajava.runtime.initialdata.InitialDataStore;
@@ -102,7 +102,7 @@ public final class AdaptCpuRuntime {
 
         ApiClient client;
         try {
-            client = Config.fromCluster();
+            client = KubernetesClient.load();
         } catch (Exception e) {
             logger.error("Failed to load in-cluster config: " + e);
             return null;
@@ -265,6 +265,9 @@ public final class AdaptCpuRuntime {
     private static String parameterText(RuntimeContext context) {
         JsonElement value = JsonUtil.elementPath(
                 context.stdinJson(), "evaluation", "parameters", PARAM_CPU_MULTIPLIER);
+        if (value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean()) {
+            return value.getAsBoolean() ? "True" : "False";
+        }
         return value == null || value.isJsonNull() ? "None" : value.getAsString();
     }
 
