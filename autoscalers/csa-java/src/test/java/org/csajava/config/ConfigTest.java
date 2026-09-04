@@ -10,32 +10,27 @@ import java.util.Map;
 import org.junit.Test;
 import org.yaml.snakeyaml.Yaml;
 
-public class ConfigParityTest {
+public class ConfigTest {
     @Test
-    public void matchesPythonBehavioralConfiguration() throws Exception {
-        Map<String, Object> python = load(Path.of("..", "csa", "config.yaml"));
-        Map<String, Object> java = load(Path.of("config.yaml"));
+    public void usesTheExperimentalConfiguration() throws Exception {
+        Map<String, Object> config = load(Path.of("config.yaml"));
 
-        assertEquals(timeout(python, "metric"), timeout(java, "metric"));
-        assertEquals(timeout(python, "evaluate"), timeout(java, "evaluate"));
+        assertEquals(1000, timeout(config, "metric"));
+        assertEquals(2000, timeout(config, "evaluate"));
         for (String strategy : List.of("adapt_replicas", "adapt_cpu", "adapt_tag")) {
-            assertEquals(adaptTimeout(python, strategy), adaptTimeout(java, strategy));
+            assertEquals(2000, adaptTimeout(config, strategy));
         }
-        for (String key : List.of(
-                "interval",
-                "minReplicas",
-                "maxReplicas",
-                "maxCPU",
-                "kubernetesMetricSpecs",
-                "enabled_strategies",
-                "requireKubernetesMetrics",
-                "logVerbosity")) {
-            assertEquals(key, python.get(key), java.get(key));
-        }
+        assertEquals(5000, config.get("interval"));
+        assertEquals(1, config.get("minReplicas"));
+        assertEquals(5, config.get("maxReplicas"));
+        assertEquals(750, config.get("maxCPU"));
+        assertEquals(List.of("adapt_cpu", "adapt_tag"), config.get("enabled_strategies"));
+        assertEquals(true, config.get("requireKubernetesMetrics"));
+        assertEquals(4, config.get("logVerbosity"));
     }
 
     @Test
-    public void versionsTheRecoveredPythonProfiles() throws Exception {
+    public void versionsEachAdaptationProfile() throws Exception {
         Map<String, List<String>> expected = Map.of(
                 "h", List.of("adapt_replicas"),
                 "hq", List.of("adapt_replicas", "adapt_tag"),

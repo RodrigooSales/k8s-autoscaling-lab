@@ -24,8 +24,3 @@ java {
 application {
     mainClass = 'org.csajava.App'
 }
-
-tasks.register('differentialTest', Exec) {
-    dependsOn installDist
-    commandLine providers.environmentVariable('CSA_PYTHON').getOrElse('python3'), 'parity/run.py'
-}

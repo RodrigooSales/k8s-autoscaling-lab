@@ -9,7 +9,6 @@ public final class KubernetesClient {
     }
 
     public static ApiClient load() throws IOException {
-        String url = System.getenv("CSA_KUBERNETES_URL");
-        return url == null || url.isBlank() ? Config.fromCluster() : Config.fromUrl(url, false);
+        return Config.fromCluster();
     }
 }

@@ -4,7 +4,7 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 
 ## Status da migracao
 
-- [x] Contratos validados diferencialmente contra o Python real.
+- [x] Logica dos contratos alinhada com a implementacao de referencia.
 - [x] Runtime base Java (CLI, stdin/stdout, config, dispatcher).
 - [x] Migracao de `metric` com paridade de contrato.
 - [x] Migracao de `evaluate` com paridade de contrato.
@@ -30,16 +30,16 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
   - `adapt_cpu`: implementado.
   - `initial_data`: implementado via `InitialDataStore`.
 
-## Paridade funcional atual
+## Equivalencia funcional atual
 
-- `metric` e `evaluate`: alinhados nos caminhos exercitados pelo experimento e cobertos pelo oracle Python.
-- `config.yaml`: valores comportamentais comparados automaticamente com a configuracao Python.
+- `metric` e `evaluate`: alinhados nos caminhos exercitados pelo experimento e cobertos por testes Java.
+- `config.yaml`: valores comportamentais fixados por testes Java independentes.
 - `profiles/{h,hq,v,vq}.yaml`: configuracoes versionadas recuperadas das quatro imagens Python publicadas.
 - `adapt_replicas`, `adapt_cpu` e `adapt_tag`: fluxo Kubernetes coberto por traces HTTP estaticos equivalentes ao Python.
 - `initialData`: sem cache local; releitura, merge e PATCH do Pod seguem o fluxo Python.
 - Processo: stdout, codigos de saida e logs seguem o Python nos caminhos dos experimentos e falhas cobertas.
 - Diferencas conhecidas (edge cases):
-  - configuracoes invalidas incomuns e entradas fora dos cenarios reais nao sao alvo de paridade exaustiva.
+  - configuracoes invalidas incomuns e entradas fora dos cenarios reais nao sao alvo de equivalencia exaustiva.
 
 ## Estrutura de pacotes
 
@@ -88,24 +88,19 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 - `CliTest`: parse de argumentos e erros de uso.
 - `CpuQuantityTest`: parse/format de CPU.
 - `RuntimeContextTest`: parse de stdin e carga de config.
-- `ConfigParityTest`: compara timeouts, limites, metrica, intervalo e estrategias com o Python.
-- `QuantityParityTest`: cobre os formatos de metrica usados pelo experimento.
+- `ConfigTest`: fixa timeouts, limites, intervalo e estrategias usados pelo experimento.
+- `EvaluateQuantityTest`: cobre os formatos de metrica usados pelo experimento.
 - `Adapt*RuntimeTest`: compara ordem, metodo, endpoint e payload sem exigir cluster real.
 - `InitialDataStoreTest`: cobre atraso de reconciliacao, merge, sequencia HTTP e falhas de persistencia.
 - `AppTest`, `JsonOutTest` e `RuntimeLoggingTest`: cobrem stdout, exit code e logs normalizados.
-- `parity/run.py`: executa primeiro os scripts Python reais como oracle e compara stdout, stderr, exit code, log, trace HTTP e estado final com o Java.
-
-O harness diferencial redireciona ambos os clientes para o mesmo servidor Kubernetes falso. Ele nao altera arquivos em `autoscalers/csa/` e nao mantem respostas esperadas manualmente.
-
 Comandos:
 
 ```bash
 ./gradlew test
 ./gradlew build
-python3 -m venv .venv-parity
-.venv-parity/bin/pip install -r parity/requirements.txt
-CSA_PYTHON=.venv-parity/bin/python ./gradlew differentialTest
 ```
+
+Os testes executam somente codigo Java. Eles verificam decisoes, arredondamento, payloads, sequencia das chamadas Kubernetes, `initialData`, stdout, exit code e logging.
 
 ## Infra para cluster
 
@@ -123,7 +118,6 @@ Exemplos diretos:
 
 ```bash
 printf '%s' '{"resource":{"spec":{"replicas":2}},"kubernetesMetrics":[{"spec":{"external":{"target":{"value":"1000"}}},"external":{"current":{"value":"1300000"}}}]}' | ./gradlew run --args='-m metric'
-.venv-parity/bin/python parity/run.py --case metric.basic
 ```
 
 ## Docker

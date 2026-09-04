@@ -1,11 +1,12 @@
 package org.csajava.runtime.evaluate;
 
 import static org.junit.Assert.assertEquals;
+
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import org.junit.Test;
 
-public class QuantityParityTest {
+public class EvaluateQuantityTest {
     @Test
     public void parsesMetricFormatsUsedByTheExperiment() {
         assertEquals("1000", parse("1000"));
