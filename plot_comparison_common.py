@@ -5,16 +5,16 @@ CONFIGURATION_LABELS = {
     "base_5": "Base 5 Repl",
     "hpa_std": "HPA Std",
     "hpa_fast": "HPA Fast",
-    "csa_h": "CSA H",
-    "csa_hq_25": "CSA HQ 25",
-    "csa_hq_50": "CSA HQ 50",
+    "csa_h": "CSA Python H",
+    "csa_hq_25": "CSA Python HQ 25",
+    "csa_hq_50": "CSA Python HQ 50",
     "csa_java_h": "CSA Java H",
     "csa_java_hq_25": "CSA Java HQ 25",
     "csa_java_hq_50": "CSA Java HQ 50",
     "base_1500": "Base 1 Repl 1.5 CPU",
     "vpa": "VPA",
-    "csa_v": "CSA V",
-    "csa_vq": "CSA VQ",
+    "csa_v": "CSA Python V",
+    "csa_vq": "CSA Python VQ",
     "csa_java_v": "CSA Java V",
     "csa_java_vq": "CSA Java VQ",
 }
@@ -50,4 +50,3 @@ COMPARISON_METRICS = [
         percent_axis=True,
     ),
 ]
-

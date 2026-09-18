@@ -15,6 +15,7 @@ ARG TAG=vq
 RUN apk add --no-cache jq unzip openjdk21-jre || apk add --no-cache jq unzip openjdk21
 ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
+ENV CSA_JAVA_OPTS="-XX:ActiveProcessorCount=1 -XX:TieredStopAtLevel=1"
 
 COPY profiles/${TAG}.yaml /config.yaml
 

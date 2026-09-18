@@ -76,6 +76,19 @@ pip install -r requirements.txt
 
 There's a complete suite of tests on `run_tests.sh`. This script will configure the cluster with various configurations and run the same locust script in headless mode to generate load. The results are saved on CSV files under `tests/results`.
 
+Use `run_tests_by_cenary.sh` to select groups with a comma-separated list and an optional iteration count:
+
+```bash
+./run_tests_by_cenary.sh csa,csa-java,vpa, 50
+./run_tests_by_cenary.sh hpa,vpa 10
+./run_tests_by_cenary.sh all 50
+./run_tests_by_cenary.sh          # all groups, 50 iterations
+```
+
+Available groups: `base` (1 replica, 5 replicas, and CPU 1500m), `hpa` (standard and fast), `csa` and `csa-java` (H, HQ 25%, HQ 50%, V, and VQ), and `vpa`. Selection preserves the suite's execution order. A trailing comma is accepted; omitted iterations default to 50. A single numeric argument still runs all groups for that many iterations. Invalid groups or iteration counts are rejected before cluster commands run.
+
+Validate this CLI locally with `python -m unittest discover -s tests -p 'test_run_tests_by_cenary.py'`. These tests simulate `kubectl`, `locust`, and `sleep`.
+
 # CSA Java incremental validation status (point 5)
 
 The migration from `autoscalers/csa` (Python) to `autoscalers/csa-java` was validated incrementally in the cluster with focused scenarios before integrating `csa-java` into the full test pipeline.

@@ -72,52 +72,6 @@ run_test_suite() {
     
     kubectl apply -k kube-znn/manifests/overlay/800k/
     kubectl scale deployment kube-znn --replicas 1
-    PROM_EXTRACT_NAME=${ITERATION}_0_base_1 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
-    sleep 60
-    
-    kubectl apply -k kube-znn/manifests/overlay/800k/
-    kubectl scale deployment kube-znn --replicas 5
-    sleep 10
-    PROM_EXTRACT_NAME=${ITERATION}_0_base_5 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
-    kubectl scale deployment kube-znn --replicas 1
-    sleep 60
-    
-    echo "####################################"
-    echo "#          Starting CSA H          #"
-    echo "####################################"
-    
-    kubectl delete -k kube-znn/manifests/overlay/800k/
-    kubectl apply -k kube-znn/manifests/overlay/800k/
-    kubectl apply -f autoscalers/csa/custom-selfadapter-h.yaml
-    sleep 5
-    PROM_EXTRACT_NAME=${ITERATION}_3_csa_h locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
-    kubectl delete -f autoscalers/csa/custom-selfadapter-h.yaml
-    sleep 60
-    
-    echo "####################################"
-    echo "#       Starting CSA HQ 25%        #"
-    echo "####################################"
-    
-    kubectl delete -k kube-znn/manifests/overlay/800k/
-    kubectl apply -k kube-znn/manifests/overlay/800k/
-    kubectl patch deployment kube-znn --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":"25%","maxSurge":"25%"}}}}'
-    kubectl apply -f autoscalers/csa/custom-selfadapter-hq.yaml
-    sleep 5
-    PROM_EXTRACT_NAME=${ITERATION}_3_csa_hq_25 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
-    kubectl delete -f autoscalers/csa/custom-selfadapter-hq.yaml
-    sleep 60
-    
-    echo "####################################"
-    echo "#       Starting CSA HQ 50%        #"
-    echo "####################################"
-    
-    kubectl delete -k kube-znn/manifests/overlay/800k/
-    kubectl apply -k kube-znn/manifests/overlay/800k/
-    kubectl patch deployment kube-znn --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":"50%","maxSurge":"50%"}}}}'
-    kubectl apply -f autoscalers/csa/custom-selfadapter-hq.yaml
-    sleep 5
-    PROM_EXTRACT_NAME=${ITERATION}_3_csa_hq_50 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
-    kubectl delete -f autoscalers/csa/custom-selfadapter-hq.yaml
     sleep 60
     
     echo "####################################"
@@ -143,55 +97,20 @@ run_test_suite() {
     kubectl apply -f autoscalers/csa-java/custom-selfadapter-hq.yaml
     sleep 5
     PROM_EXTRACT_NAME=${ITERATION}_3_csa_java_hq_25 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    kubectl delete -f autoscalers/csa-java/custom-selfadapter-hq.yaml
     sleep 60
     
     echo "####################################"
     echo "#    Starting CSA Java HQ 50%      #"
     echo "####################################"
     
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
     kubectl patch deployment kube-znn --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":"50%","maxSurge":"50%"}}}}'
+    kubectl apply -f autoscalers/csa-java/custom-selfadapter-hq.yaml
     sleep 5
     PROM_EXTRACT_NAME=${ITERATION}_3_csa_java_hq_50 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
-    sleep 60
     kubectl delete -f autoscalers/csa-java/custom-selfadapter-hq.yaml
-
-    echo "####################################"
-    echo "#      Starting Base CPU 1500m     #"
-    echo "####################################"
-    
-    kubectl delete -k kube-znn/manifests/overlay/800k/
-    wait_for_kube_znn_pods_deleted || return 1
-    kubectl apply -k kube-znn/manifests/overlay/800k/ || return 1
-    PATCH_CPU='{ "spec": { "containers": [ { "name": "znn", "resources": { "limits": { "cpu": "750m" } } }, { "name": "nginx", "resources": { "limits": { "cpu": "750m" } } } ] } }'
-    KUBE_ZNN_POD=$(get_expected_kube_znn_pod) || return 1
-    echo Will patch $KUBE_ZNN_POD
-    kubectl patch pod "$KUBE_ZNN_POD" --subresource resize --patch "$PATCH_CPU" || return 1
-    sleep 5
-    PROM_EXTRACT_NAME=${ITERATION}_4_base_1500 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
-    sleep 60
-    
-    echo "####################################"
-    echo "#          Starting CSA V          #"
-    echo "####################################"
-    
-    kubectl delete -k kube-znn/manifests/overlay/800k/
-    kubectl apply -k kube-znn/manifests/overlay/800k/
-    kubectl apply -f autoscalers/csa/custom-selfadapter-v.yaml
-    sleep 5
-    PROM_EXTRACT_NAME=${ITERATION}_6_csa_v locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
-    kubectl delete -f autoscalers/csa/custom-selfadapter-v.yaml
-    sleep 60
-    
-    echo "####################################"
-    echo "#         Starting CSA V+Q         #"
-    echo "####################################"
-    
-    kubectl delete -k kube-znn/manifests/overlay/800k/
-    kubectl apply -k kube-znn/manifests/overlay/800k/
-    kubectl apply -f autoscalers/csa/custom-selfadapter-vq.yaml
-    sleep 5
-    PROM_EXTRACT_NAME=${ITERATION}_6_csa_vq locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
-    kubectl delete -f autoscalers/csa/custom-selfadapter-vq.yaml
     sleep 60
     
     echo "####################################"

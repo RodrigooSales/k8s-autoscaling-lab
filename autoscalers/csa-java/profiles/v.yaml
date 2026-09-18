@@ -1,6 +1,6 @@
 metric:
   type: "shell"
-  timeout: 1000
+  timeout: 2000
   shell:
     entrypoint: "/app/csa-java/bin/csa-java"
     command:
@@ -9,7 +9,7 @@ metric:
     logStderr: true
 evaluate:
   type: "shell"
-  timeout: 2000
+  timeout: 8000
   shell:
     entrypoint: "/app/csa-java/bin/csa-java"
     command:
@@ -18,7 +18,7 @@ evaluate:
 adapt:
   adapt_replicas:
     type: "shell"
-    timeout: 2000
+    timeout: 8000
     shell:
       entrypoint: "/app/csa-java/bin/csa-java"
       command:
@@ -26,7 +26,7 @@ adapt:
         - "adapt_replicas"
   adapt_tag:
     type: "shell"
-    timeout: 2000
+    timeout: 10000
     shell:
       entrypoint: "/app/csa-java/bin/csa-java"
       command:
@@ -34,7 +34,7 @@ adapt:
         - "adapt_tag"
   adapt_cpu:
     type: "shell"
-    timeout: 2000
+    timeout: 10000
     shell:
       entrypoint: "/app/csa-java/bin/csa-java"
       command:

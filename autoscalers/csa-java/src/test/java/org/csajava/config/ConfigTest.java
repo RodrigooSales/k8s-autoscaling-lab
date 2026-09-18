@@ -15,11 +15,11 @@ public class ConfigTest {
     public void usesTheExperimentalConfiguration() throws Exception {
         Map<String, Object> config = load(Path.of("config.yaml"));
 
-        assertEquals(1000, timeout(config, "metric"));
-        assertEquals(2000, timeout(config, "evaluate"));
-        for (String strategy : List.of("adapt_replicas", "adapt_cpu", "adapt_tag")) {
-            assertEquals(2000, adaptTimeout(config, strategy));
-        }
+        assertEquals(2000, timeout(config, "metric"));
+        assertEquals(8000, timeout(config, "evaluate"));
+        assertEquals(8000, adaptTimeout(config, "adapt_replicas"));
+        assertEquals(10000, adaptTimeout(config, "adapt_cpu"));
+        assertEquals(10000, adaptTimeout(config, "adapt_tag"));
         assertEquals(5000, config.get("interval"));
         assertEquals(1, config.get("minReplicas"));
         assertEquals(5, config.get("maxReplicas"));
