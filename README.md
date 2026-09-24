@@ -119,26 +119,6 @@ Scenarios executed so far:
 - Java H with increased command timeout (`5000ms`): `tests/results/val5_java_h_t5.csv`
 - Java VQ with increased command timeout (`5000ms`): `tests/results/val5_java_vq_t5.csv`
 
-## Current results (intermediate)
-
-| Scenario | Requests | Fail ratio | Avg (ms) | P95 (ms) | Max pods/tag | Tags seen | CPU limit range |
-|---|---:|---:|---:|---:|---:|---|---|
-| `val5_java_h` | 6268 | 0.0000 | 3229.1 | 5918.9 | 1 | 800k | 0.15-0.15 |
-| `val5_py_h` | 12705 | 0.0726 | 1603.3 | 4457.4 | 3 | 800k | 0.15-0.15 |
-| `val5_java_vq` | 7130 | 0.0000 | 2842.4 | 5541.7 | 1 | 800k | 0.15-0.15 |
-| `val5_py_vq` | 7974 | 0.1046 | 2088.6 | 4818.7 | 1 | 800k | 0.15-0.15 |
-| `val5_java_h_t5` | 7101 | 0.1148 | 2850.7 | 5719.6 | 1 | 800k | 0.15-0.15 |
-| `val5_java_vq_t5` | 6915 | 0.1118 | 2922.7 | 6046.4 | 1 | 800k | 0.15-0.15 |
-
-Observations from controller logs during these runs:
-- With Java timeout at `2000ms`, `evaluate` frequently timed out in cluster load.
-- Increasing Java timeout to `5000ms` reduced the `evaluate` timeout issue, but did not fully stabilize all cycles under peak load.
-- Java H still produced repeated adaptation errors on `adapt_replicas` calls.
-- Java VQ continued without effective CPU/tag adaptation (tag remained `800k`, CPU limit remained `0.15`).
-- Python H showed effective replica adaptation behavior during validation runs.
-
-This is an intermediate checkpoint for point 5. Next step is to fix Java adaptation error paths (not only timeout), then rerun the same scenarios and proceed to pipeline integration.
-
 # Result Visualization
 
 Some results can be visualized by running the `plot_*` scripts.
