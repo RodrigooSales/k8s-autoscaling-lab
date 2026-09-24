@@ -1,0 +1,35 @@
+{
+  "id": "metric_numeric_value_types",
+  "operation": "metric",
+  "input": {
+    "resource": {
+      "spec": {
+        "replicas": 3
+      }
+    },
+    "kubernetesMetrics": [
+      {
+        "spec": {
+          "external": {
+            "target": {
+              "value": 1000
+            }
+          }
+        },
+        "external": {
+          "current": {
+            "value": 950000
+          }
+        }
+      }
+    ]
+  },
+  "config": {},
+  "state": {},
+  "expectedResult": {
+    "current_replicas": 3,
+    "target_value": 1000,
+    "current_value": 950000
+  }
+}
+

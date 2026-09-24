@@ -17,9 +17,15 @@
 # - csa-java horizontal + tag quality
 #   - kube-znn:800k rollingUpdate maxSurge=25% & maxUnavailable=25%
 #   - kube-znn:800k rollingUpdate maxSurge=50% & maxUnavailable=50%
+# - csa-go horizontal
+#   - kube-znn:800k
+# - csa-go horizontal + tag quality
+#   - kube-znn:800k rollingUpdate maxSurge=25% & maxUnavailable=25%
+#   - kube-znn:800k rollingUpdate maxSurge=50% & maxUnavailable=50%
 # - vpa
 # - csa vertical + tag quality
 # - csa-java vertical + tag quality
+# - csa-go vertical + tag quality
 # sleeps for a minute between locust executions
 
 wait_for_kube_znn_pods_deleted() {
@@ -67,6 +73,7 @@ run_test_suite() {
     
     kubectl delete hpa znn
     kubectl delete csa csa-znn
+    kubectl delete -f autoscalers/csa-go/custom-selfadapter-h.yaml --ignore-not-found=true
     kubectl delete vpa znn
     kubectl delete -k kube-znn/manifests/overlay/800k/
     
@@ -183,6 +190,44 @@ run_test_suite() {
     sleep 60
 
     echo "####################################"
+    echo "#        Starting CSA Go H         #"
+    echo "####################################"
+
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
+    kubectl apply -f autoscalers/csa-go/custom-selfadapter-h.yaml
+    sleep 5
+    PROM_EXTRACT_NAME=${ITERATION}_3_csa_go_h locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    kubectl delete -f autoscalers/csa-go/custom-selfadapter-h.yaml --ignore-not-found=true
+    sleep 60
+
+    echo "####################################"
+    echo "#      Starting CSA Go HQ 25%      #"
+    echo "####################################"
+
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
+    kubectl patch deployment kube-znn --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":"25%","maxSurge":"25%"}}}}'
+    kubectl apply -f autoscalers/csa-go/custom-selfadapter-hq.yaml
+    sleep 5
+    PROM_EXTRACT_NAME=${ITERATION}_3_csa_go_hq_25 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    kubectl delete -f autoscalers/csa-go/custom-selfadapter-hq.yaml --ignore-not-found=true
+    sleep 60
+
+    echo "####################################"
+    echo "#      Starting CSA Go HQ 50%      #"
+    echo "####################################"
+
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
+    kubectl patch deployment kube-znn --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":"50%","maxSurge":"50%"}}}}'
+    kubectl apply -f autoscalers/csa-go/custom-selfadapter-hq.yaml
+    sleep 5
+    PROM_EXTRACT_NAME=${ITERATION}_3_csa_go_hq_50 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    kubectl delete -f autoscalers/csa-go/custom-selfadapter-hq.yaml --ignore-not-found=true
+    sleep 60
+
+    echo "####################################"
     echo "#      Starting Base CPU 1500m     #"
     echo "####################################"
     
@@ -256,10 +301,34 @@ run_test_suite() {
     PROM_EXTRACT_NAME=${ITERATION}_6_csa_java_vq locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
     kubectl delete -f autoscalers/csa-java/custom-selfadapter-vq.yaml
     sleep 60
+
+    echo "####################################"
+    echo "#        Starting CSA Go V         #"
+    echo "####################################"
+
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
+    kubectl apply -f autoscalers/csa-go/custom-selfadapter-v.yaml
+    sleep 5
+    PROM_EXTRACT_NAME=${ITERATION}_6_csa_go_v locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    kubectl delete -f autoscalers/csa-go/custom-selfadapter-v.yaml --ignore-not-found=true
+    sleep 60
+
+    echo "####################################"
+    echo "#       Starting CSA Go V+Q        #"
+    echo "####################################"
+
+    kubectl delete -k kube-znn/manifests/overlay/800k/
+    kubectl apply -k kube-znn/manifests/overlay/800k/
+    kubectl apply -f autoscalers/csa-go/custom-selfadapter-vq.yaml
+    sleep 5
+    PROM_EXTRACT_NAME=${ITERATION}_6_csa_go_vq locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+    kubectl delete -f autoscalers/csa-go/custom-selfadapter-vq.yaml --ignore-not-found=true
+    sleep 60
 }
 
 main() {
-    local iteration
+    local iteration iteration_number
     total=50
     
     if [ -n "$1" ] && [ "$1" -ne 0 ];
@@ -267,7 +336,8 @@ main() {
         total=$1
     fi
     
-    for iteration in $(seq -w 1 $total); do
+    for iteration_number in $(seq 1 "$total"); do
+        printf -v iteration '%02d' "$iteration_number"
         echo "#############################################"
         echo "#         Starting run ${iteration}         #"
         echo "#############################################"

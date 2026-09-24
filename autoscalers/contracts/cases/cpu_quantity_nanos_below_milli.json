@@ -1,0 +1,11 @@
+{
+  "id": "cpu_quantity_nanos_below_milli",
+  "operation": "cpu_quantity",
+  "input": {
+    "cpu": "999999n"
+  },
+  "config": {},
+  "state": {},
+  "expectedResult": 1
+}
+

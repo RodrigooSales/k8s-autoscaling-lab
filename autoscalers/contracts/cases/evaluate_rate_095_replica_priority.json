@@ -1,0 +1,42 @@
+{
+  "id": "evaluate_rate_095_replica_priority",
+  "operation": "evaluate",
+  "input": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "metrics": [
+      {
+        "value": "{\"current_value\":\"950000\",\"target_value\":\"1000\"}"
+      }
+    ]
+  },
+  "config": {
+    "enabled_strategies": [
+      "adapt_replicas",
+      "adapt_cpu",
+      "adapt_tag"
+    ],
+    "minReplicas": 1,
+    "maxReplicas": 5,
+    "maxCPU": 750
+  },
+  "state": {
+    "current_mcpu": 500,
+    "initial_mcpu": 500,
+    "spec_mcpu": 500
+  },
+  "expectedResult": {
+    "strategy": "adapt_replicas",
+    "parameters": {
+      "replicas": 2
+    }
+  }
+}
+

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Usage: ./run_tests_by_cenary.sh [base,hpa,csa,csa-java,vpa|all] [iterations]
+# Usage: ./run_tests_by_cenary.sh [base,hpa,csa,csa-java,csa-go,vpa|all] [iterations]
 # Defaults to all scenarios and 50 iterations. A trailing comma is accepted.
 # Runs the selected test groups, consisting in the following:
 # - kube-znn:800k
@@ -19,9 +19,15 @@
 # - csa-java horizontal + tag quality
 #   - kube-znn:800k rollingUpdate maxSurge=25% & maxUnavailable=25%
 #   - kube-znn:800k rollingUpdate maxSurge=50% & maxUnavailable=50%
+# - csa-go horizontal
+#   - kube-znn:800k
+# - csa-go horizontal + tag quality
+#   - kube-znn:800k rollingUpdate maxSurge=25% & maxUnavailable=25%
+#   - kube-znn:800k rollingUpdate maxSurge=50% & maxUnavailable=50%
 # - vpa
 # - csa vertical + tag quality
 # - csa-java vertical + tag quality
+# - csa-go vertical + tag quality
 # sleeps for a minute between locust executions
 
 wait_for_kube_znn_pods_deleted() {
@@ -74,6 +80,7 @@ run_test_suite() {
     
     kubectl delete hpa znn
     kubectl delete csa csa-znn
+    kubectl delete -f autoscalers/csa-go/custom-selfadapter-h.yaml --ignore-not-found=true
     kubectl delete vpa znn
     kubectl delete -k kube-znn/manifests/overlay/800k/
     
@@ -280,14 +287,78 @@ run_test_suite() {
         kubectl delete -f autoscalers/csa-java/custom-selfadapter-vq.yaml
         sleep 60
     fi
+
+    if scenario_selected csa-go "$scenario_list"; then
+        echo "####################################"
+        echo "#        Starting CSA Go H         #"
+        echo "####################################"
+
+        kubectl delete -k kube-znn/manifests/overlay/800k/
+        kubectl apply -k kube-znn/manifests/overlay/800k/
+        kubectl apply -f autoscalers/csa-go/custom-selfadapter-h.yaml
+        sleep 5
+        PROM_EXTRACT_NAME=${ITERATION}_3_csa_go_h locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+        kubectl delete -f autoscalers/csa-go/custom-selfadapter-h.yaml --ignore-not-found=true
+        sleep 60
+
+        echo "####################################"
+        echo "#      Starting CSA Go HQ 25%      #"
+        echo "####################################"
+
+        kubectl delete -k kube-znn/manifests/overlay/800k/
+        kubectl apply -k kube-znn/manifests/overlay/800k/
+        kubectl patch deployment kube-znn --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":"25%","maxSurge":"25%"}}}}'
+        kubectl apply -f autoscalers/csa-go/custom-selfadapter-hq.yaml
+        sleep 5
+        PROM_EXTRACT_NAME=${ITERATION}_3_csa_go_hq_25 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+        kubectl delete -f autoscalers/csa-go/custom-selfadapter-hq.yaml --ignore-not-found=true
+        sleep 60
+
+        echo "####################################"
+        echo "#      Starting CSA Go HQ 50%      #"
+        echo "####################################"
+
+        kubectl delete -k kube-znn/manifests/overlay/800k/
+        kubectl apply -k kube-znn/manifests/overlay/800k/
+        kubectl patch deployment kube-znn --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":"50%","maxSurge":"50%"}}}}'
+        kubectl apply -f autoscalers/csa-go/custom-selfadapter-hq.yaml
+        sleep 5
+        PROM_EXTRACT_NAME=${ITERATION}_3_csa_go_hq_50 locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+        kubectl delete -f autoscalers/csa-go/custom-selfadapter-hq.yaml --ignore-not-found=true
+        sleep 60
+
+        echo "####################################"
+        echo "#        Starting CSA Go V         #"
+        echo "####################################"
+
+        kubectl delete -k kube-znn/manifests/overlay/800k/
+        kubectl apply -k kube-znn/manifests/overlay/800k/
+        kubectl apply -f autoscalers/csa-go/custom-selfadapter-v.yaml
+        sleep 5
+        PROM_EXTRACT_NAME=${ITERATION}_6_csa_go_v locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+        kubectl delete -f autoscalers/csa-go/custom-selfadapter-v.yaml --ignore-not-found=true
+        sleep 60
+
+        echo "####################################"
+        echo "#       Starting CSA Go V+Q        #"
+        echo "####################################"
+
+        kubectl delete -k kube-znn/manifests/overlay/800k/
+        kubectl apply -k kube-znn/manifests/overlay/800k/
+        kubectl apply -f autoscalers/csa-go/custom-selfadapter-vq.yaml
+        sleep 5
+        PROM_EXTRACT_NAME=${ITERATION}_6_csa_go_vq locust --headless --only-summary --processes 4 -H https://znn.k8s.lab -f tests/scenarios/locustfile.py
+        kubectl delete -f autoscalers/csa-go/custom-selfadapter-vq.yaml --ignore-not-found=true
+        sleep 60
+    fi
 }
 
 main() {
-    local iteration scenario scenario_list=${1:-all} total=${2:-50}
+    local iteration iteration_number scenario scenario_list=${1:-all} total=${2:-50}
     local -a scenarios
 
     if [ "$#" -gt 2 ]; then
-        echo "Usage: $0 [base,hpa,csa,csa-java,vpa|all] [iterations]" >&2
+        echo "Usage: $0 [base,hpa,csa,csa-java,csa-go,vpa|all] [iterations]" >&2
         return 1
     fi
 
@@ -304,15 +375,16 @@ main() {
     IFS=',' read -r -a scenarios <<< "$scenario_list"
     for scenario in "${scenarios[@]}"; do
         case "$scenario" in
-            base|hpa|csa|csa-java|vpa|all) ;;
+            base|hpa|csa|csa-java|csa-go|vpa|all) ;;
             *)
-                echo "Unknown scenario '$scenario'. Choose: base,hpa,csa,csa-java,vpa,all" >&2
+                echo "Unknown scenario '$scenario'. Choose: base,hpa,csa,csa-java,csa-go,vpa,all" >&2
                 return 1
                 ;;
         esac
     done
 
-    for iteration in $(seq -w 1 "$total"); do
+    for iteration_number in $(seq 1 "$total"); do
+        printf -v iteration '%02d' "$iteration_number"
         echo "#############################################"
         echo "#         Starting run ${iteration}         #"
         echo "#############################################"

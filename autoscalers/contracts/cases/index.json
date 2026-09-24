@@ -1,0 +1,23 @@
+{
+  "cases": [
+    "metric_first_metric",
+    "adapt_replicas_success",
+    "adapt_cpu_success",
+    "adapt_tag_success",
+    "evaluate_rate_095_replica_priority",
+    "evaluate_rate_096_cpu_fallback",
+    "evaluate_rate_098_tag_fallback",
+    "evaluate_rate_090_deadband",
+    "evaluate_rate_0949_deadband",
+    "evaluate_rate_089_below_threshold",
+    "evaluate_low_load_replica_calculation",
+    "evaluate_low_load_cpu_fallback",
+    "evaluate_low_load_tag_fallback",
+    "evaluate_disabled_strategies",
+    "metric_numeric_value_types",
+    "cpu_quantity_fractional_tie",
+    "cpu_quantity_nanos_below_milli",
+    "cpu_quantity_large_nanos",
+    "cpu_quantity_invalid"
+  ]
+}

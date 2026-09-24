@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`autoscalers/` holds Python/Java CSA code and HPA, VPA, and CPA manifests. Java code/tests are in `autoscalers/csa-java/src/{main,test}/java`; fixtures are in `contracts/cases/`. Cluster definitions live in `charts/`, `values/`, `bootstrapping/`, and `helmfile_step*.yaml`. `kube-znn/` and `vagrant-kubeadm-kubernetes/` are submodules. Locust scenarios are in `tests/scenarios/`, outputs in `tests/results/`, and Python scripts analyze them.
+`autoscalers/` holds Python, Java, and Go CSA code plus HPA, VPA, and CPA manifests. Java code/tests are in `autoscalers/csa-java/src/{main,test}/java`; the Go project is in `autoscalers/csa-go/`; fixtures are in `contracts/cases/`. Cluster definitions live in `charts/`, `values/`, `bootstrapping/`, and `helmfile_step*.yaml`. `kube-znn/` and `vagrant-kubeadm-kubernetes/` are submodules. Locust scenarios are in `tests/scenarios/`, outputs in `tests/results/`, and Python scripts analyze them.
 
 K8S Autoscaling Lab is divided into
 1. **AutoScalers** — These are Kubernetes self-adaptation tools config files that will undergo a benchmarking process to determine which one performs best under specific load testing scenarios. Uses HPA, VPA and CSA(This is a operator created by me, for self-adaption strategys with any code language)
@@ -22,8 +22,12 @@ K8S Autoscaling Lab is divided into
 
 ### CSA and CPA Python
 
-- Pure Python. No external tools 
-- Packages: Kubernetes Python client, PyYAML
+- Python packages: Kubernetes Python client and PyYAML.
+
+### CSA Go
+
+- Go 1.25, managed with mise.
+- Packages: `k8s.io/client-go`, `k8s.io/api`, `k8s.io/apimachinery`, and `go.yaml.in/yaml/v2`. JSON, CLI parsing, logging, and tests use the Go standard library. `sigs.k8s.io/yaml` is an indirect Kubernetes dependency.
 
 ### Experiments and Analysis
 
@@ -55,7 +59,7 @@ All benchmark autoscalers target the `kube-znn` Deployment. CSA and HPA use the 
 
 The Java port implements the same stdin/stdout strategy contract in one executable.
 
-- **`config.yaml`** — Maps CSA phases to binary modes, polls every 5 seconds, bounds replicas at 1–5 and CPU at `1000m`, and currently enables CPU adaptation.
+- **`config.yaml`** — Maps CSA phases to binary modes, polls every 5 seconds, bounds replicas at 1–5 and CPU at `750m`, and enables CPU and tag adaptation.
 - **`src/main/java/org/csajava/App.java`** — Loads stdin and `/config.yaml`, validates the requested mode, dispatches it, and emits structured errors.
 - **`src/main/java/org/csajava/runtime/ModeHandlers.java`** — Maps metric, evaluation, replica, CPU, and tag modes to their runtime handlers.
 - **`src/main/java/org/csajava/runtime/metric/MetricRuntime.java`** — Validates and normalizes the external metric payload for evaluation.
@@ -64,6 +68,10 @@ The Java port implements the same stdin/stdout strategy contract in one executab
 - **`src/main/java/org/csajava/runtime/adapt/cpu/AdaptCpuRuntime.java`** — Uses the Pod resize subresource for `znn` and `nginx`, clamping CPU between the stored baseline and `maxCPU`.
 - **`src/main/java/org/csajava/runtime/adapt/tag/AdaptTagRuntime.java`** — Changes the image along the same tag ladder and skips changes during an active rollout.
 - **`src/main/java/org/csajava/runtime/initialdata/InitialDataStore.java`** — Stores initial tag and CPU values through the CSA annotation/status contract.
+
+### CSA Go (`autoscalers/csa-go/`)
+
+The Go project is organized with its executable in `cmd/csa-go/` and implementation/tests in `internal/csa/`. All five modes (`metric`, `evaluate`, `adapt_replicas`, `adapt_cpu`, `adapt_tag`) and unit tests are implemented. Evaluation persists the initial CPU annotation, replica and tag adaptation patch the loaded Deployment with a strategic merge patch, and CPU adaptation resizes Pods through the `resize` subresource. Unit tests use shared cases in `autoscalers/contracts/cases/` and fake Kubernetes clients, without a cluster. `Dockerfile`, `profiles/{h,hq,v,vq}.yaml`, and `custom-selfadapter-{h,hq,v,vq}.yaml` package the Go runtime. `TAG=vq ./build_csa-go.sh` builds a static linux/amd64 binary with mise, publishes it to the internal registry, and generates the matching manifest. The runtime base is pinned by digest. Image resources, target, node selector, and `pods/resize` permission match the Python and Java CSA manifests. Functional validation is recorded in `autoscalers/csa-go/docs/validacao-funcional.md`; load tests and `run_tests*` remain user-run.
 
 ### HPA (`autoscalers/hpa/`)
 
@@ -82,19 +90,20 @@ Note: CPA is no longer used by the test scenarios.
 - `python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt` creates the analysis environment.
 - `(cd vagrant-kubeadm-kubernetes && vagrant up)` provisions the lab. Then export `KUBECONFIG="$PWD/vagrant-kubeadm-kubernetes/configs/config"` and run `./cluster_bootstrap.sh`.
 - `cd autoscalers/csa-java && ./gradlew test` runs tests; `./gradlew build` builds Java.
-- `./run_tests.sh 1` runs one destructive cluster matrix; no argument means 50 iterations.
+- `cd autoscalers/csa-go && mise exec -- go run ./cmd/csa-go -m metric` runs the Go metric mode; `mise exec -- go build -o bin/csa-go ./cmd/csa-go` builds it; `mise exec -- go test ./...` runs Go tests; `TAG=vq ./build_csa-go.sh` builds and publishes the Go image and writes its manifest (requires Docker access to `registry.k8s.lab` and `envsubst`).
+- From the repository root, activate `.venv` before using the load scripts so the pinned Locust executable and relative certificate path are available. Run load matrices only when the user explicitly authorizes the specific run: `source .venv/bin/activate && ./run_tests_by_cenary.sh csa-go 1` runs one CSA Go iteration; `./run_tests.sh 1` runs one full destructive matrix, and no argument means 50 iterations.
 
 ## Coding Style & Naming Conventions
 
-Use four spaces for Python/Java and two for YAML. No global formatter or linter exists; follow adjacent code. Python uses `snake_case` files/functions and `UPPER_SNAKE_CASE` constants. Java uses `PascalCase` types, `camelCase` members, and lowercase packages.
+Use four spaces for Python/Java and two for YAML. No global formatter or linter exists; follow adjacent code. Python uses `snake_case` files/functions and `UPPER_SNAKE_CASE` constants. Java uses `PascalCase` types, `camelCase` members, and lowercase packages. Go files use `gofmt`; use short lowercase package names and `MixedCaps` for exported identifiers.
 
 ## Testing Guidelines
 
-Write a failing test before non-trivial behavior changes. JUnit 4 tests mirror production packages and end in `Test.java`. Add dotted fixtures such as `evaluate.high_load_cpu.json` when contracts change. Locust scenarios are integration experiments. No coverage threshold exists; run Java tests, then the cluster matrix for manifest or adaptation changes.
+Write a failing test before non-trivial behavior changes. JUnit 4 tests mirror production packages and end in `Test.java`; Go tests use the standard `testing` package in `_test.go` files. Add dotted fixtures such as `evaluate.high_load_cpu.json` when contracts change. Locust scenarios are integration experiments. No coverage threshold exists; run the relevant language tests, then the cluster matrix for manifest or adaptation changes.
 
 ## Commit & Pull Request Guidelines
 
-Use short, imperative Conventional Commit subjects, for example `fix(csa-java): handle null evaluation`. Keep one logical change per commit and stage explicitly. Pull requests explain scope and cluster impact, link applicable issues, and list verification. Attach plots for visual changes; avoid unrelated bulk results.
+Use short, imperative Conventional Commit subjects, for example `fix(csa-java): handle null evaluation`. Keep one logical change per commit and stage explicitly. Pull requests explain scope and cluster impact, link applicable issues, and list verification. Attach plots for visual changes; avoid unrelated bulk results. Keep pull requests to 500 lines of logic; documentation, tests, and similar non-logic changes do not count toward this limit.
 
 ## Security & Configuration
 

@@ -1,0 +1,71 @@
+{
+  "id": "adapt_tag_success",
+  "operation": "adapt_tag",
+  "input": {
+    "resource": {
+      "metadata": {
+        "name": "target",
+        "namespace": "work"
+      }
+    },
+    "evaluation": {
+      "parameters": {
+        "tag_up": true
+      }
+    }
+  },
+  "config": {},
+  "state": {
+    "deployment": {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "target",
+        "namespace": "work",
+        "generation": 1
+      },
+      "spec": {
+        "replicas": 1,
+        "selector": {
+          "matchLabels": {
+            "app": "demo"
+          }
+        },
+        "template": {
+          "spec": {
+            "containers": [
+              {
+                "name": "znn",
+                "image": "registry.k8s.lab/csa-znn:200k",
+                "resources": {
+                  "limits": {
+                    "cpu": "500m"
+                  }
+                }
+              },
+              {
+                "name": "nginx",
+                "image": "nginx:latest",
+                "resources": {
+                  "limits": {
+                    "cpu": "500m"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "observedGeneration": 1,
+        "updatedReplicas": 1,
+        "availableReplicas": 1
+      }
+    },
+    "pods": [],
+    "initialData": "{\"tag\":\"100k\"}"
+  },
+  "expectedResult": {
+    "tag": "400k"
+  }
+}
