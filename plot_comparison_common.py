@@ -11,12 +11,17 @@ CONFIGURATION_LABELS = {
     "csa_java_h": "CSA Java H",
     "csa_java_hq_25": "CSA Java HQ 25",
     "csa_java_hq_50": "CSA Java HQ 50",
+    "csa_go_h": "CSA Go H",
+    "csa_go_hq_25": "CSA Go HQ 25",
+    "csa_go_hq_50": "CSA Go HQ 50",
     "base_1500": "Base 1 Repl 1.5 CPU",
     "vpa": "VPA",
     "csa_v": "CSA Python V",
     "csa_vq": "CSA Python VQ",
     "csa_java_v": "CSA Java V",
     "csa_java_vq": "CSA Java VQ",
+    "csa_go_v": "CSA Go V",
+    "csa_go_vq": "CSA Go VQ",
 }
 
 CONFIGURATION_COLORS = {
@@ -36,6 +41,11 @@ CONFIGURATION_COLORS = {
     "csa_java_hq_50": "#C5B0D5",
     "csa_java_v": "#6A3D9A",
     "csa_java_vq": "#B279A2",
+    "csa_go_h": "#00838F",
+    "csa_go_hq_25": "#00ACC1",
+    "csa_go_hq_50": "#4DD0E1",
+    "csa_go_v": "#006064",
+    "csa_go_vq": "#26C6DA",
 }
 
 COMPARISON_METRICS = [

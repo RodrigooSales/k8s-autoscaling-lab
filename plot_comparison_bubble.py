@@ -19,13 +19,14 @@ REQUIRED_METRICS = [
     "slo_breach_success_rate",
     "response_size_mean",
 ]
-CATEGORY_ORDER = ["Baselines", "HPA", "VPA", "CSA", "CSA Java", "Outros"]
+CATEGORY_ORDER = ["Baselines", "HPA", "VPA", "CSA", "CSA Java", "CSA Go", "Outros"]
 CATEGORY_BASE_COLORS = {
     "Baselines": "#4C78A8",
     "HPA": "#F58518",
     "VPA": "#54A24B",
     "CSA": "#E45756",
     "CSA Java": "#7B61FF",
+    "CSA Go": "#00838F",
     "Outros": "#777777",
 }
 
@@ -122,6 +123,8 @@ def configuration_category(configuration: str) -> str:
         return "VPA"
     if normalized.startswith("csa_java_") or normalized == "csa_java":
         return "CSA Java"
+    if normalized.startswith("csa_go_") or normalized == "csa_go":
+        return "CSA Go"
     if normalized.startswith("csa_") or normalized == "csa":
         return "CSA"
     return "Outros"
