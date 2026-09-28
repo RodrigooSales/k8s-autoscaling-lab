@@ -1,4 +1,44 @@
+import pandas as pd
+
 from plot_helper import MetricSpec
+
+
+CONFIGURATION_ORDER = (
+    "base_1",
+    "base_5",
+    "hpa_std",
+    "hpa_fast",
+    "csa_h",
+    "csa_java_h",
+    "csa_go_h",
+    "csa_hq_25",
+    "csa_java_hq_25",
+    "csa_go_hq_25",
+    "csa_hq_50",
+    "csa_java_hq_50",
+    "csa_go_hq_50",
+    "base_1500",
+    "vpa",
+    "csa_v",
+    "csa_java_v",
+    "csa_go_v",
+    "csa_vq",
+    "csa_java_vq",
+    "csa_go_vq",
+)
+
+
+def sort_configurations(frame: pd.DataFrame) -> pd.DataFrame:
+    order = pd.Categorical(
+        frame["configuration"], categories=CONFIGURATION_ORDER, ordered=True
+    )
+    return (
+        frame.assign(_configuration_order=order)
+        .sort_values(
+            ["_configuration_order", "order", "configuration"], na_position="last"
+        )
+        .drop(columns="_configuration_order")
+    )
 
 CONFIGURATION_LABELS = {
     "base_1": "Base 1 Repl",

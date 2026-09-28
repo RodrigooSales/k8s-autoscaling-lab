@@ -4,8 +4,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from plot_comparison_bubble import build_category_colors, configuration_category
-from plot_comparison_common import CONFIGURATION_LABELS
+from plot_comparison_aggregated import prepare_plot_data as prepare_aggregated_data
+from plot_comparison_bubble import (
+    REQUIRED_METRICS,
+    build_category_colors,
+    configuration_category,
+    prepare_plot_data as prepare_bubble_data,
+)
+from plot_comparison_common import COMPARISON_METRICS, CONFIGURATION_LABELS
 from plot_helper import discover_result_files
 
 
@@ -50,6 +56,69 @@ class CSAGoPlotsTest(unittest.TestCase):
         go_colors = combined.iloc[len(references):]
         self.assertTrue(go_colors.notna().all())
         self.assertTrue(set(go_colors).isdisjoint(original))
+
+    def test_plots_group_implementations_by_scenario(self):
+        expected = [
+            "base_1", "base_5", "hpa_std", "hpa_fast",
+            "csa_h", "csa_java_h", "csa_go_h",
+            "csa_hq_25", "csa_java_hq_25", "csa_go_hq_25",
+            "csa_hq_50", "csa_java_hq_50", "csa_go_hq_50",
+            "base_1500", "vpa",
+            "csa_v", "csa_java_v", "csa_go_v",
+            "csa_vq", "csa_java_vq", "csa_go_vq",
+        ]
+        rows = []
+        for position, configuration in enumerate(reversed(expected)):
+            row = {
+                "run": "01",
+                "order": position,
+                "configuration": configuration,
+                "label": CONFIGURATION_LABELS[configuration],
+            }
+            row.update({metric.key: 1.0 for metric in COMPARISON_METRICS})
+            rows.append(row)
+        run_df = pd.DataFrame(rows)
+
+        configurations, _ = prepare_aggregated_data(run_df)
+        self.assertEqual(configurations["configuration"].tolist(), expected)
+
+        summary_rows = [
+            {
+                "order": row["order"],
+                "configuration": row["configuration"],
+                "label": row["label"],
+                "metric": metric,
+                "mean": 1.0,
+            }
+            for row in rows
+            for metric in REQUIRED_METRICS
+        ]
+        bubble_df = prepare_bubble_data(pd.DataFrame(summary_rows))
+        self.assertEqual(bubble_df["configuration"].tolist(), expected)
+
+    def test_csa_labels_preserve_implementation_and_scenario(self):
+        expected = {
+            "csa_h": "CSA Python H",
+            "csa_java_h": "CSA Java H",
+            "csa_go_h": "CSA Go H",
+            "csa_hq_25": "CSA Python HQ 25",
+            "csa_java_hq_25": "CSA Java HQ 25",
+            "csa_go_hq_25": "CSA Go HQ 25",
+            "csa_hq_50": "CSA Python HQ 50",
+            "csa_java_hq_50": "CSA Java HQ 50",
+            "csa_go_hq_50": "CSA Go HQ 50",
+            "csa_v": "CSA Python V",
+            "csa_java_v": "CSA Java V",
+            "csa_go_v": "CSA Go V",
+            "csa_vq": "CSA Python VQ",
+            "csa_java_vq": "CSA Java VQ",
+            "csa_go_vq": "CSA Go VQ",
+        }
+
+        self.assertEqual(
+            {configuration: CONFIGURATION_LABELS[configuration] for configuration in expected},
+            expected,
+        )
 
 
 if __name__ == "__main__":

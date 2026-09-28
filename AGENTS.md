@@ -101,6 +101,10 @@ Use four spaces for Python/Java and two for YAML. No global formatter or linter 
 
 Write a failing test before non-trivial behavior changes. JUnit 4 tests mirror production packages and end in `Test.java`; Go tests use the standard `testing` package in `_test.go` files. Add dotted fixtures such as `evaluate.high_load_cpu.json` when contracts change. Locust scenarios are integration experiments. No coverage threshold exists; run the relevant language tests, then the cluster matrix for manifest or adaptation changes.
 
+## Visualization Guidelines
+
+Keep CSA chart and legend labels in the established `CSA <implementation> <scenario>` format, such as `CSA Python H`, `CSA Java HQ 25`, and `CSA Go VQ`. Grouping by scenario must use the configuration order and must never be implemented by renaming or reformatting these labels.
+
 ## Commit & Pull Request Guidelines
 
 Use short, imperative Conventional Commit subjects, for example `fix(csa-java): handle null evaluation`. Keep one logical change per commit and stage explicitly. Pull requests explain scope and cluster impact, link applicable issues, and list verification. Attach plots for visual changes; avoid unrelated bulk results. Keep pull requests to 500 lines of logic; documentation, tests, and similar non-logic changes do not count toward this limit.

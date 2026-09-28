@@ -10,6 +10,7 @@ import seaborn as sns
 from matplotlib.colors import to_rgb
 from matplotlib.lines import Line2D
 
+from plot_comparison_common import sort_configurations
 from plot_helper import format_byte_size, padded_axis_upper, scale_bubble_sizes
 
 
@@ -202,11 +203,9 @@ def prepare_plot_data(summary_df: pd.DataFrame) -> pd.DataFrame:
         )
         .reset_index()
     )
-    plot_df = (
-        plot_summary.sort_values(["order", "configuration"])
-        .dropna(subset=REQUIRED_METRICS)
-        .reset_index(drop=True)
-    )
+    plot_df = sort_configurations(plot_summary).dropna(
+        subset=REQUIRED_METRICS
+    ).reset_index(drop=True)
     if plot_df.empty:
         raise SystemExit("Nao ha dados suficientes para gerar o grafico Pareto.")
 
@@ -271,14 +270,7 @@ def build_plot(plot_df: pd.DataFrame, output_path: Path) -> None:
     ax.set_xlim(0, padded_axis_upper(plot_df["resource_usage"], minimum=1.0))
     ax.set_ylim(0, padded_axis_upper(plot_df["slo_breach_success_rate"], minimum=0.1))
 
-    legend_df = plot_df.copy()
-    legend_df["color_category"] = legend_df["configuration"].map(configuration_category)
-    legend_df["color_category_order"] = legend_df["color_category"].map(
-        {category: idx for idx, category in enumerate(CATEGORY_ORDER)}
-    )
-    legend_df = legend_df.sort_values(
-        ["color_category_order", "order", "configuration"],
-    )
+    legend_df = sort_configurations(plot_df)
     configuration_handles = [
         Line2D(
             [],
@@ -295,7 +287,7 @@ def build_plot(plot_df: pd.DataFrame, output_path: Path) -> None:
     ]
     configuration_legend = legend_ax.legend(
         handles=configuration_handles,
-        title="Cenarios por categoria",
+        title="Cenarios",
         loc="upper left",
         bbox_to_anchor=(0.0, 1.0),
         borderaxespad=0.0,

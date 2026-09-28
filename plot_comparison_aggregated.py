@@ -7,7 +7,11 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.lines import Line2D
 
-from plot_comparison_common import COMPARISON_METRICS, CONFIGURATION_COLORS
+from plot_comparison_common import (
+    COMPARISON_METRICS,
+    CONFIGURATION_COLORS,
+    sort_configurations,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,13 +45,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def prepare_plot_data(run_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    configurations = (
+    configurations = sort_configurations(
         run_df.groupby(["order", "configuration", "label"], as_index=False)
         .size()
         .rename(columns={"size": "run_count"})
-        .sort_values(["order", "configuration"])
-        .reset_index(drop=True)
-    )
+    ).reset_index(drop=True)
     configuration_order = configurations["configuration"].tolist()
     label_map = configurations.set_index("configuration")["label"].to_dict()
 

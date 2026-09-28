@@ -387,3 +387,420 @@ A segunda execução integral também passou. Inspeção final com `view_image` 
 `/tmp/csa-go-notebook-kwuy0o6c/cell-11.png` e `cell-24.png`: os 21 rótulos estão legíveis,
 os cinco cenários Go aparecem em ciano e a legenda estatística não se sobrepõe ao eixo X.
 O gráfico de bolhas mantém legenda separada por implementação, incluindo os cinco perfis Go.
+
+## Agrupamento por cenário — 2026-09-28
+
+Os gráficos agora ordenam as implementações por cenário, mantendo Python, Java e Go lado a
+lado. A sequência completa é:
+
+```text
+Base 1, Base 5, HPA padrão, HPA rápido,
+H: Python, Java, Go,
+HQ 25: Python, Java, Go,
+HQ 50: Python, Java, Go,
+Base 1 com 1,5 CPU, VPA,
+V: Python, Java, Go,
+VQ: Python, Java, Go
+```
+
+A ordem fica em `CONFIGURATION_ORDER`, em `plot_comparison_common.py`, e
+`sort_configurations` é usada pelos boxplots agregados, pelos boxplots separados do notebook,
+pelos dados das bolhas e por sua legenda. Configurações futuras não listadas continuam sendo
+aceitas e aparecem depois das conhecidas, ordenadas por `order` e nome. As cores continuam
+identificando as implementações: vermelho para Python, roxo para Java e ciano para Go.
+
+Foi acrescentado um teste que entrega os 21 cenários em ordem inversa e exige a sequência
+acima tanto no caminho agregado quanto no caminho das bolhas. O ciclo TDD foi confirmado:
+o teste falhou com a ordenação anterior, passou após a implementação, voltou a falhar após
+a retirada temporária da mudança e passou novamente depois da restauração.
+
+### Comandos de investigação
+
+Executados a partir de `autoscalers/`:
+
+```sh
+git status --short
+sed -n '1,130p' ../plot_comparison_common.py
+sed -n '1,125p' ../plot_comparison_aggregated.py
+sed -n '1,190p' ../tests/test_plot_comparison.py
+sed -n '1,190p' ../plot_comparison_bubble.py
+sed -n '190,320p' ../plot_comparison_bubble.py
+rg -n 'configuration_order|sort_values|CATEGORY_ORDER|configuration_category' ../tests/notebooks/leitura_resultados.ipynb ../plot_comparison_*.py ../tests/test_plot_comparison.py
+tail -n 120 csa-go/docs/visualizacoes.md
+rg -n 'CSA Go H|csa_go_h|scenario|cenario|configuration_order' ../tests/notebooks/leitura_resultados.ipynb | head -n 40
+```
+
+Resultado: a ordenação dos boxplots vinha de `order` seguido do nome da configuração. A
+legenda das bolhas agrupava primeiro pela implementação. Não havia uma ordem compartilhada
+por cenário.
+
+### RED, GREEN e confirmação de regressão
+
+Executado a partir da raiz do laboratório em cada etapa:
+
+```sh
+MPLBACKEND=Agg .venv/bin/python -m unittest discover -s tests -p 'test_plot_comparison.py' -v
+```
+
+Resultados sucessivos:
+
+1. RED inicial: três testes anteriores passaram e o novo teste de agrupamento falhou.
+2. GREEN: quatro testes passaram depois da implementação mínima.
+3. RED confirmado: a retirada temporária da ordenação reproduziu a falha do novo teste.
+4. GREEN restaurado: os quatro testes passaram; `git diff --check` também passou.
+
+As edições e a retirada/restauração temporária foram feitas com `apply_patch`. Nenhum arquivo
+Python ou Java dos adaptadores foi editado.
+
+### Execução do notebook
+
+O suporte e a descrição da CLI foram consultados antes da execução:
+
+```sh
+.venv/bin/jupyter execute --help | sed -n '1,180p'
+rg -n 'A descoberta não usa|O CSA Go usa' tests/notebooks/leitura_resultados.ipynb
+```
+
+Depois de atualizar o texto explicativo do notebook, as 27 células foram recalculadas:
+
+```sh
+MPLBACKEND=module://matplotlib_inline.backend_inline .venv/bin/jupyter execute tests/notebooks/leitura_resultados.ipynb --inplace --timeout=1200
+```
+
+Resultado: código 0 e notebook salvo no mesmo caminho. O kernel processou os 1.050 CSVs e
+atualizou as oito figuras e `tests/results/compare_bubble_notebook.png`.
+
+### Validação dos dados e imagens
+
+Um primeiro validador confirmou o formato do notebook e extraiu as oito imagens para um
+diretório criado por `mktemp`; sua segunda etapa falhou antes de ler dados porque passou
+`tests/results` como `str`, enquanto `discover_result_files` exige `Path`. O comando corrigido
+foi:
+
+```sh
+preview_dir=$(mktemp -d /tmp/csa-scenario-order-XXXXXX)
+.venv/bin/python - "$preview_dir" <<'PY'
+import base64
+import sys
+from pathlib import Path
+
+import nbformat
+
+path = Path('tests/notebooks/leitura_resultados.ipynb')
+book = nbformat.read(path, as_version=4)
+nbformat.validate(book)
+images = []
+for index, cell in enumerate(book.cells):
+    for output in cell.get('outputs', []):
+        if output.get('output_type') == 'error':
+            raise AssertionError((index, output))
+        image = output.get('data', {}).get('image/png')
+        if image:
+            destination = Path(sys.argv[1]) / f'cell-{index}.png'
+            destination.write_bytes(base64.b64decode(image))
+            images.append((index, destination))
+assert [index for index, _ in images] == [11, 13, 15, 17, 19, 21, 24, 26]
+print(f'notebook valid; images={len(images)}')
+print(sys.argv[1])
+PY
+```
+
+A tentativa seguinte usou
+`discover_result_files('tests/results', CONFIGURATION_LABELS)` e retornou
+`AttributeError: 'str' object has no attribute 'glob'`. Nenhum arquivo foi alterado por essa
+falha. A validação foi repetida com `Path('tests/results')`:
+
+```sh
+.venv/bin/python - <<'PY'
+from pathlib import Path
+
+import pandas as pd
+from plot_comparison_aggregated import prepare_plot_data
+from plot_comparison_bubble import prepare_plot_data as prepare_bubble_data
+from plot_comparison_common import COMPARISON_METRICS, CONFIGURATION_LABELS
+from plot_helper import compute_run_metrics, discover_result_files, summarize_runs
+
+expected = [
+    'base_1', 'base_5', 'hpa_std', 'hpa_fast',
+    'csa_h', 'csa_java_h', 'csa_go_h',
+    'csa_hq_25', 'csa_java_hq_25', 'csa_go_hq_25',
+    'csa_hq_50', 'csa_java_hq_50', 'csa_go_hq_50',
+    'base_1500', 'vpa',
+    'csa_v', 'csa_java_v', 'csa_go_v',
+    'csa_vq', 'csa_java_vq', 'csa_go_vq',
+]
+discovered = discover_result_files(Path('tests/results'), CONFIGURATION_LABELS)
+runs = pd.DataFrame(compute_run_metrics(row) for _, row in discovered.iterrows())
+configurations, _ = prepare_plot_data(runs)
+summary = summarize_runs(runs, COMPARISON_METRICS)
+bubbles = prepare_bubble_data(summary)
+assert configurations['configuration'].tolist() == expected
+assert bubbles['configuration'].tolist() == expected
+assert len(runs) == 1050
+print('actual CSV order:', ' | '.join(configurations['label']))
+print('boxplots and bubble legend: 21 configurations, 1050 runs')
+PY
+```
+
+Resultado: a ordem exata foi confirmada nos boxplots e nas bolhas usando os dados reais. As
+oito imagens foram validadas sem saídas de erro. `view_image` conferiu visualmente os gráficos
+de média de Pods, violações do SLO e bolhas; os grupos H, HQ 25, HQ 50, V e VQ aparecem com
+Python, Java e Go consecutivos, e a legenda das bolhas segue a mesma sequência.
+
+### Conferência final
+
+```sh
+MPLBACKEND=Agg .venv/bin/python -m unittest discover -s tests -p 'test_plot_comparison.py' -v
+.venv/bin/python -m compileall -q plot_comparison_common.py plot_comparison_aggregated.py plot_comparison_bubble.py tests/test_plot_comparison.py
+git diff --check
+git diff --quiet -- autoscalers/csa autoscalers/csa-java 'tests/results/*.csv'
+.venv/bin/python - <<'PY'
+from pathlib import Path
+import nbformat
+
+path = Path('tests/notebooks/leitura_resultados.ipynb')
+book = nbformat.read(path, as_version=4)
+nbformat.validate(book)
+image_cells = [
+    index for index, cell in enumerate(book.cells)
+    if any('image/png' in output.get('data', {}) for output in cell.get('outputs', []))
+]
+assert image_cells == [11, 13, 15, 17, 19, 21, 24, 26]
+assert all(
+    output.output_type != 'error'
+    for cell in book.cells
+    for output in cell.get('outputs', [])
+)
+assert all(cell.execution_count is not None for cell in book.cells if cell.cell_type == 'code')
+assert Path('tests/results/compare_bubble_notebook.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+print('Notebook valid: 27 cells, 8 chart outputs, no errors.')
+PY
+git diff --stat
+git status --short
+```
+
+Resultado: quatro testes passaram; os quatro arquivos Python compilam; o notebook tem 27
+células, oito saídas gráficas, todas as células de código executadas e nenhuma saída de erro;
+o PNG exportado é válido. `git diff --check` passou. Os CSVs brutos e as árvores dos
+adaptadores Python/Java não têm alterações. O submódulo `vagrant-kubeadm-kubernetes` já estava
+modificado antes desta atividade e permaneceu fora do escopo.
+
+## Cenário como identificador principal — 2026-09-28
+
+A ordenação anterior já mantinha os dados consecutivos por cenário, mas os rótulos começavam
+pela implementação (`CSA Python H`, `CSA Java H`, `CSA Go H`). Isso ainda apresentava a
+linguagem como primeiro elemento visual. Os rótulos foram invertidos para explicitar o cenário:
+
+```text
+H · Python, H · Java, H · Go
+HQ 25 · Python, HQ 25 · Java, HQ 25 · Go
+HQ 50 · Python, HQ 50 · Java, HQ 50 · Go
+V · Python, V · Java, V · Go
+VQ · Python, VQ · Java, VQ · Go
+```
+
+A mudança afeta todos os boxplots, tabelas do notebook e a legenda das bolhas por meio de
+`CONFIGURATION_LABELS`. A ordem de dados continua definida por `CONFIGURATION_ORDER`, com o
+cenário como primeiro critério.
+
+### TDD e execução
+
+```sh
+MPLBACKEND=Agg .venv/bin/python -m unittest discover -s tests -p 'test_plot_comparison.py' -v
+```
+
+RED: o teste novo exigiu os 15 rótulos iniciados pelo cenário e falhou com os nomes antigos;
+o teste de descoberta Go também foi atualizado no lado dos testes e confirmou a mesma falha.
+Depois da mudança de produção, cinco testes passaram. A retirada temporária apenas dos novos
+rótulos reproduziu duas falhas; a restauração voltou a deixar os cinco testes verdes.
+
+O notebook foi atualizado e executado novamente:
+
+```sh
+rg -n 'A descoberta não usa' tests/notebooks/leitura_resultados.ipynb
+MPLBACKEND=module://matplotlib_inline.backend_inline .venv/bin/jupyter execute tests/notebooks/leitura_resultados.ipynb --inplace --timeout=1200
+```
+
+Resultado: código 0, 27 células recalculadas e o PNG de bolhas atualizado.
+
+As imagens de média de Pods e violações do SLO foram extraídas para inspeção:
+
+```sh
+preview_dir=$(mktemp -d /tmp/csa-scenario-labels-XXXXXX)
+.venv/bin/python - "$preview_dir" <<'PY'
+import base64
+import sys
+from pathlib import Path
+
+import nbformat
+
+book = nbformat.read('tests/notebooks/leitura_resultados.ipynb', as_version=4)
+nbformat.validate(book)
+for index in (11, 24):
+    images = [
+        output.data['image/png']
+        for output in book.cells[index].outputs
+        if 'image/png' in output.get('data', {})
+    ]
+    assert len(images) == 1, (index, len(images))
+    (Path(sys.argv[1]) / f'cell-{index}.png').write_bytes(base64.b64decode(images[0]))
+assert all(
+    output.output_type != 'error'
+    for cell in book.cells
+    for output in cell.get('outputs', [])
+)
+print(sys.argv[1])
+PY
+```
+
+`view_image` foi usado nos dois arquivos temporários e em
+`tests/results/compare_bubble_notebook.png`. A inspeção confirmou que o cenário é o primeiro
+texto visível em cada rótulo e que Python, Java e Go permanecem consecutivos dentro dele.
+
+### Conferência final dos rótulos
+
+```sh
+MPLBACKEND=Agg .venv/bin/python -m unittest discover -s tests -p 'test_plot_comparison.py' -v
+.venv/bin/python -m compileall -q plot_comparison_common.py plot_comparison_aggregated.py plot_comparison_bubble.py tests/test_plot_comparison.py
+git diff --check
+git diff --quiet -- autoscalers/csa autoscalers/csa-java 'tests/results/*.csv'
+.venv/bin/python - <<'PY'
+from pathlib import Path
+
+import nbformat
+from plot_comparison_common import CONFIGURATION_LABELS, CONFIGURATION_ORDER
+
+book = nbformat.read('tests/notebooks/leitura_resultados.ipynb', as_version=4)
+nbformat.validate(book)
+images = [
+    index for index, cell in enumerate(book.cells)
+    if any('image/png' in output.get('data', {}) for output in cell.get('outputs', []))
+]
+assert images == [11, 13, 15, 17, 19, 21, 24, 26]
+assert all(
+    output.output_type != 'error'
+    for cell in book.cells
+    for output in cell.get('outputs', [])
+)
+assert [CONFIGURATION_LABELS[name] for name in CONFIGURATION_ORDER[4:13]] == [
+    'H · Python', 'H · Java', 'H · Go',
+    'HQ 25 · Python', 'HQ 25 · Java', 'HQ 25 · Go',
+    'HQ 50 · Python', 'HQ 50 · Java', 'HQ 50 · Go',
+]
+assert Path('tests/results/compare_bubble_notebook.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+print('Scenario-first order and labels verified; notebook has 8 charts and no errors.')
+PY
+git status --short
+```
+
+Resultado: cinco testes passaram, a compilação Python e `git diff --check` passaram, os oito
+gráficos estão presentes e não há saída de erro no notebook. Os CSVs e os adaptadores Python e
+Java continuam sem alterações.
+
+## Restauração definitiva da legenda — 2026-09-28
+
+Por decisão do usuário, a legenda histórica não deve ser alterada. Foram restaurados os
+rótulos `CSA <implementação> <cenário>`, por exemplo `CSA Python H`, `CSA Java HQ 25` e
+`CSA Go VQ`. O agrupamento por cenário continua sendo feito exclusivamente pela ordem das
+configurações. A regra foi acrescentada ao `AGENTS.md` do laboratório e protegida pelo teste
+`test_csa_labels_preserve_implementation_and_scenario`.
+
+Comandos de leitura:
+
+```sh
+git status --short
+sed -n '1,125p' plot_comparison_common.py
+sed -n '1,155p' tests/test_plot_comparison.py
+rg -n 'cenário é o primeiro|H · Python|nunca|legenda|scenario-first|Cenário como' tests/notebooks/leitura_resultados.ipynb autoscalers/csa-go/docs/visualizacoes.md AGENTS.md
+```
+
+Depois da restauração de `CONFIGURATION_LABELS`, da atualização do teste e da regra em
+`AGENTS.md`, foram executados:
+
+```sh
+MPLBACKEND=Agg .venv/bin/python -m unittest discover -s tests -p 'test_plot_comparison.py' -v
+MPLBACKEND=module://matplotlib_inline.backend_inline .venv/bin/jupyter execute tests/notebooks/leitura_resultados.ipynb --inplace --timeout=1200
+```
+
+Resultado: cinco testes passaram e as 27 células foram recalculadas sem erro.
+
+As imagens foram extraídas e inspecionadas:
+
+```sh
+preview_dir=$(mktemp -d /tmp/csa-legend-restore-XXXXXX)
+.venv/bin/python - "$preview_dir" <<'PY'
+import base64
+import sys
+from pathlib import Path
+
+import nbformat
+
+book = nbformat.read('tests/notebooks/leitura_resultados.ipynb', as_version=4)
+nbformat.validate(book)
+for index in (11, 24):
+    images = [
+        output.data['image/png']
+        for output in book.cells[index].outputs
+        if 'image/png' in output.get('data', {})
+    ]
+    assert len(images) == 1
+    (Path(sys.argv[1]) / f'cell-{index}.png').write_bytes(base64.b64decode(images[0]))
+assert all(
+    output.output_type != 'error'
+    for cell in book.cells
+    for output in cell.get('outputs', [])
+)
+print(sys.argv[1])
+PY
+```
+
+`view_image` confirmou a legenda restaurada nos boxplots e no PNG de bolhas. A sequência no
+eixo permanece por cenário: H em Python/Java/Go, depois HQ 25, HQ 50, V e VQ.
+
+Conferência final:
+
+```sh
+MPLBACKEND=Agg .venv/bin/python -m unittest discover -s tests -p 'test_plot_comparison.py' -v
+.venv/bin/python -m compileall -q plot_comparison_common.py plot_comparison_aggregated.py plot_comparison_bubble.py tests/test_plot_comparison.py
+git diff --check
+git diff --quiet -- autoscalers/csa autoscalers/csa-java 'tests/results/*.csv'
+.venv/bin/python - <<'PY'
+from pathlib import Path
+
+import nbformat
+from plot_comparison_common import CONFIGURATION_LABELS, CONFIGURATION_ORDER
+
+expected_order = [
+    'csa_h', 'csa_java_h', 'csa_go_h',
+    'csa_hq_25', 'csa_java_hq_25', 'csa_go_hq_25',
+    'csa_hq_50', 'csa_java_hq_50', 'csa_go_hq_50',
+]
+expected_labels = [
+    'CSA Python H', 'CSA Java H', 'CSA Go H',
+    'CSA Python HQ 25', 'CSA Java HQ 25', 'CSA Go HQ 25',
+    'CSA Python HQ 50', 'CSA Java HQ 50', 'CSA Go HQ 50',
+]
+assert list(CONFIGURATION_ORDER[4:13]) == expected_order
+assert [CONFIGURATION_LABELS[name] for name in expected_order] == expected_labels
+book = nbformat.read('tests/notebooks/leitura_resultados.ipynb', as_version=4)
+nbformat.validate(book)
+images = [
+    index for index, cell in enumerate(book.cells)
+    if any('image/png' in output.get('data', {}) for output in cell.get('outputs', []))
+]
+assert images == [11, 13, 15, 17, 19, 21, 24, 26]
+assert all(
+    output.output_type != 'error'
+    for cell in book.cells
+    for output in cell.get('outputs', [])
+)
+assert Path('tests/results/compare_bubble_notebook.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+print('Historical labels preserved; scenario grouping preserved; notebook valid.')
+PY
+rg -n 'Visualization Guidelines|Keep CSA chart' AGENTS.md
+git status --short
+```
+
+Resultado: cinco testes passaram, os rótulos históricos e o agrupamento por cenário foram
+confirmados simultaneamente, e o notebook contém oito gráficos sem erros. Os CSVs e as
+implementações Python/Java não foram alterados.
