@@ -2,23 +2,17 @@
 
 ## Project Structure & Module Organization
 
-`autoscalers/` holds Python, Java, and Go CSA code plus HPA, VPA, and CPA manifests. Java code/tests are in `autoscalers/csa-java/src/{main,test}/java`; the Go project is in `autoscalers/csa-go/`; fixtures are in `contracts/cases/`. Cluster definitions live in `charts/`, `values/`, `bootstrapping/`, and `helmfile_step*.yaml`. `kube-znn/` and `vagrant-kubeadm-kubernetes/` are submodules. Locust scenarios are in `tests/scenarios/`, outputs in `tests/results/`, and Python scripts analyze them.
+`autoscalers/` holds Python, Java, and Go CSA code plus HPA, VPA, and CPA manifests. Java code/tests are in `autoscalers/csa-java/src/{main,test}/java`; the Go project is in `autoscalers/csa-go/`; shared contract fixtures are in `autoscalers/contracts/cases/`. Cluster definitions live in `charts/`, `values/`, `bootstrapping/`, and `helmfile_step*.yaml`. `kube-znn/` and `vagrant-kubeadm-kubernetes/` are submodules. Locust scenarios are in `tests/scenarios/`, outputs in `tests/results/`, and Python scripts analyze them.
 
-K8S Autoscaling Lab is divided into
-1. **AutoScalers** — These are Kubernetes self-adaptation tools config files that will undergo a benchmarking process to determine which one performs best under specific load testing scenarios. Uses HPA, VPA and CSA(This is a operator created by me, for self-adaption strategys with any code language)
-2. **Kube Znn** — It is the git submodule of the sample application that will be used to run the tests. Built in pure php and exposes a simple image 
-3. **Vagrant Kubeadm Kubernetes** — It is a famous script for creating a Kubernetes cluster using the kubeadm tool. Built in vagrant and shell scripts.
-4. **Tests** — It is the folder containing the Locust test scenario scripts, the results folder, and the notebooks folder, where we save the Jupyter notebooks used to analyze the results.
-5. **Some scripts** — At the root of the repository, we find several utility scripts that we will use to configure the cluster, run tests, extract information from the results, and manage components.
+The repository combines autoscaler configurations, the `kube-znn` sample application, the Vagrant Kubernetes lab, Locust scenarios and result analysis, plus root-level scripts for cluster setup and experiments. The root `README.md` documents the current setup and workflow.
 
 
 ## Dependencies
 
 ### CSA Java
 
-- Pure Java. No external tools
-- Gradle
-- Packages: JUnit, Kubernetes client, Gson, and SnakeYAML.
+- Java 21, built with the Gradle wrapper.
+- Packages: JUnit 4, Kubernetes Java client, Gson, SnakeYAML, and SLF4J's no-op runtime binding.
 
 ### CSA and CPA Python
 
@@ -36,8 +30,8 @@ K8S Autoscaling Lab is divided into
 
 ### Local Kubernetes Lab
 
-- Ubuntu 24.04, Kubernetes 1.35.3, and Calico 3.31.4.
-- Packages: Git, Vagrant, VirtualBox, Docker, kubectl, Helmfile, and envsubst.
+- The current Vagrant defaults documented in `README.md` use Kubernetes 1.35.3 and Calico networking.
+- Host prerequisites are listed in `README.md`; they include Git, Vagrant, VirtualBox, Docker, kubectl, Helm, Helmfile, Python 3.12+, and Bash.
 
 ## Autoscalers
 
@@ -71,7 +65,7 @@ The Java port implements the same stdin/stdout strategy contract in one executab
 
 ### CSA Go (`autoscalers/csa-go/`)
 
-The Go project is organized with its executable in `cmd/csa-go/` and implementation/tests in `internal/csa/`. All five modes (`metric`, `evaluate`, `adapt_replicas`, `adapt_cpu`, `adapt_tag`) and unit tests are implemented. Evaluation persists the initial CPU annotation, replica and tag adaptation patch the loaded Deployment with a strategic merge patch, and CPU adaptation resizes Pods through the `resize` subresource. Unit tests use shared cases in `autoscalers/contracts/cases/` and fake Kubernetes clients, without a cluster. `Dockerfile`, `profiles/{h,hq,v,vq}.yaml`, and `custom-selfadapter-{h,hq,v,vq}.yaml` package the Go runtime. `TAG=vq ./build_csa-go.sh` builds a static linux/amd64 binary with mise, publishes it to the internal registry, and generates the matching manifest. The runtime base is pinned by digest. Image resources, target, node selector, and `pods/resize` permission match the Python and Java CSA manifests. Functional validation is recorded in `autoscalers/csa-go/docs/validacao-funcional.md`; load tests and `run_tests*` remain user-run.
+The Go project is organized with its executable in `cmd/csa-go/` and implementation/tests in `internal/csa/`. All five modes (`metric`, `evaluate`, `adapt_replicas`, `adapt_cpu`, `adapt_tag`) have unit tests. Evaluation tries to persist the initial CPU through the CSA Pod annotation for the operator to reconcile into `status.initialData`; later adaptations read that state. Replica and tag adaptation patch the loaded Deployment with a strategic merge patch, and CPU adaptation resizes Pods through the `resize` subresource. Unit tests use shared cases in `autoscalers/contracts/cases/` and fake Kubernetes clients, without a cluster. `Dockerfile`, `profiles/{h,hq,v,vq}.yaml`, and `custom-selfadapter-{h,hq,v,vq}.yaml` package the Go runtime. `TAG=vq ./build_csa-go.sh` builds a static `linux/amd64` binary with mise, publishes it to the internal registry, and generates the matching manifest. The runtime base is pinned by digest. CPU/memory resources, workload target, node placement, and `pods/resize` permission match the Python and Java manifests; Go uses a distinct CSA/container name and image repository. Functional validation is recorded in `autoscalers/csa-go/docs/validacao-funcional.md`.
 
 ### HPA (`autoscalers/hpa/`)
 
@@ -99,7 +93,7 @@ Use four spaces for Python/Java and two for YAML. No global formatter or linter 
 
 ## Testing Guidelines
 
-Write a failing test before non-trivial behavior changes. JUnit 4 tests mirror production packages and end in `Test.java`; Go tests use the standard `testing` package in `_test.go` files. Add dotted fixtures such as `evaluate.high_load_cpu.json` when contracts change. Locust scenarios are integration experiments. No coverage threshold exists; run the relevant language tests, then the cluster matrix for manifest or adaptation changes.
+Write a failing test before non-trivial behavior changes. JUnit 4 tests mirror production packages and end in `Test.java`; Go tests use the standard `testing` package in `_test.go` files. Shared contracts live in `autoscalers/contracts/cases/`. Unit tests should run without a cluster. Use cluster checks for functional integration changes; `run_tests*` execute destructive Locust load matrices and may run only when the user explicitly authorizes that specific run. No coverage threshold exists; run the relevant language test suite for changes.
 
 ## Visualization Guidelines
 
