@@ -107,7 +107,14 @@ Keep CSA chart and legend labels in the established `CSA <implementation> <scena
 
 ## Commit & Pull Request Guidelines
 
-Use short, imperative Conventional Commit subjects, for example `fix(csa-java): handle null evaluation`. Keep one logical change per commit and stage explicitly. Pull requests explain scope and cluster impact, link applicable issues, and list verification. Attach plots for visual changes; avoid unrelated bulk results. Keep pull requests to 500 lines of logic; documentation, tests, and similar non-logic changes do not count toward this limit.
+- Keep all project work in the personal fork. Never open pull requests against the upstream/original repository.
+- Never commit directly to the fork's `main` or any branch whose name starts with `csa-`. Work in a separate Git worktree or branch and open a pull request to the intended protected branch within the fork.
+- Name working branches using Conventional Branches style: `<type>/<short-kebab-case-description>`, with types aligned to Conventional Commits, such as `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, or `perf/`.
+- Keep each pull request focused on one objective and limit it to at most 500 lines of production logic. Tests, documentation, and configuration do not count toward this limit. Split larger changes into separate pull requests.
+- Prefer removing or simplifying existing code over adding new code.
+- Document all work, decisions, relevant commands, and validation results in the appropriate project documentation.
+
+Use short, imperative Conventional Commit subjects, for example `fix(csa-java): handle null evaluation`. Keep one logical change per commit and stage explicitly. Pull requests explain scope and cluster impact, link applicable issues, and list verification. Attach plots for visual changes; avoid unrelated bulk results.
 
 ## Security & Configuration
 
