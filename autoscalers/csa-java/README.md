@@ -32,11 +32,15 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 
 ## Equivalencia funcional atual
 
-- `metric` e `evaluate`: alinhados nos caminhos exercitados pelo experimento e cobertos por testes Java.
+- `metric` preserva os tipos JSON dos valores recebidos na primeira metrica, como faz o Python.
+- `CpuQuantity` usa arredondamento ties-to-even como `round` do Python e aceita valores em nanos maiores que `Integer.MAX_VALUE`, desde que o resultado em millicores caiba em `int`.
+- `adapt_tag` interpreta `tag_up` e `update_cpu` pela truthiness do valor JSON, como Python; um valor numerico de CPU atual igual a zero nao dispara atualizacao de CPU.
+- `evaluate`: alinhado nos caminhos exercitados pelo experimento e coberto por testes Java.
 - `config.yaml`: valores comportamentais fixados por testes Java independentes.
 - `profiles/{h,hq,v,vq}.yaml`: configuracoes versionadas recuperadas das quatro imagens Python publicadas.
 - `adapt_replicas`, `adapt_cpu` e `adapt_tag`: fluxo Kubernetes coberto por traces HTTP estaticos equivalentes ao Python.
 - `initialData`: sem cache local; releitura, merge e PATCH do Pod seguem o fluxo Python.
+- `initialData` nao cria `metadata.annotations` quando o Pod carregado nao tem anotacoes. O modelo gerado pelo cliente Kubernetes Java representa tanto campo omitido quanto objeto vazio como mapa vazio, entao ambos sao tratados como ausentes.
 - Processo: stdout, codigos de saida e logs seguem o Python nos caminhos dos experimentos e falhas cobertas.
 - Diferencas conhecidas (edge cases):
   - configuracoes invalidas incomuns e entradas fora dos cenarios reais nao sao alvo de equivalencia exaustiva.
@@ -87,6 +91,7 @@ Implementacao Java do Custom Self Adapter (CSA), migrada por etapas a partir da 
 
 - `CliTest`: parse de argumentos e erros de uso.
 - `CpuQuantityTest`: parse/format de CPU.
+- `MetricRuntimeTest`: preserva os tipos JSON e seleciona a primeira metrica.
 - `RuntimeContextTest`: parse de stdin e carga de config.
 - `ConfigTest`: fixa timeouts, limites, intervalo e estrategias usados pelo experimento.
 - `EvaluateQuantityTest`: cobre os formatos de metrica usados pelo experimento.
