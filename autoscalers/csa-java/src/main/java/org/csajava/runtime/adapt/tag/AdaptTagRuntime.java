@@ -1,5 +1,7 @@
 package org.csajava.runtime.adapt.tag;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonPrimitive;
 import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
@@ -9,6 +11,7 @@ import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import io.kubernetes.client.openapi.models.V1Container;
 import io.kubernetes.client.openapi.models.V1Deployment;
 import io.kubernetes.client.util.PatchUtils;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -18,7 +21,6 @@ import org.csajava.kubernetes.KubernetesJson;
 import org.csajava.logging.AdapterLogger;
 import org.csajava.runtime.adapt.AdaptSupport;
 import org.csajava.runtime.initialdata.InitialDataStore;
-import org.csajava.util.JsonUtil;
 
 public final class AdaptTagRuntime {
     private static final List<String> TAGS = List.of("100k", "200k", "400k", "600k", "800k");
@@ -39,17 +41,50 @@ public final class AdaptTagRuntime {
     public static Object evaluate(RuntimeContext context) {
         AdapterLogger logger = new AdapterLogger("adapt_tag");
         if (!context.hints().isEmpty()) {
-            Boolean tagUp = JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_TAG_UP);
-            if (tagUp == null) {
-                logger.error("Parameters must include 'tag_up' (bool)");
+            TagParameters parameters = tagParameters(context, logger);
+            if (parameters == null) {
                 return null;
             }
-            boolean updateCpu = Boolean.TRUE.equals(
-                    JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_UPDATE_CPU));
-            return evaluateFromHints(context, tagUp, updateCpu, logger);
+            return evaluateFromHints(context, parameters.tagUp(), parameters.updateCpu(), logger);
         }
         return evaluateInCluster(context, logger);
     }
+
+    private static TagParameters tagParameters(RuntimeContext context, AdapterLogger logger) {
+        var parameters = AdaptSupport.evaluationParameters(context);
+        if (parameters == null || !parameters.has(PARAM_TAG_UP)) {
+            logger.error("Parameters must include 'tag_up' (bool)");
+            return null;
+        }
+        return new TagParameters(
+                pythonTruthy(parameters.get(PARAM_TAG_UP)),
+                pythonTruthy(parameters.get(PARAM_UPDATE_CPU)));
+    }
+
+    static boolean pythonTruthy(JsonElement value) {
+        if (value == null || value.isJsonNull()) {
+            return false;
+        }
+        if (value.isJsonArray()) {
+            return !value.getAsJsonArray().isEmpty();
+        }
+        if (value.isJsonObject()) {
+            return !value.getAsJsonObject().entrySet().isEmpty();
+        }
+        if (!value.isJsonPrimitive()) {
+            return false;
+        }
+        JsonPrimitive primitive = value.getAsJsonPrimitive();
+        if (primitive.isBoolean()) {
+            return primitive.getAsBoolean();
+        }
+        if (primitive.isNumber()) {
+            return primitive.getAsBigDecimal().compareTo(BigDecimal.ZERO) != 0;
+        }
+        return !primitive.getAsString().isEmpty();
+    }
+
+    private record TagParameters(boolean tagUp, boolean updateCpu) {}
 
     private static Object evaluateFromHints(
             RuntimeContext context, boolean tagUp, boolean updateCpu, AdapterLogger logger) {
@@ -151,13 +186,12 @@ public final class AdaptTagRuntime {
             return null;
         }
 
-        Boolean tagUp = JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_TAG_UP);
-        if (tagUp == null) {
-            logger.error("Parameters must include 'tag_up' (bool)");
+        TagParameters parameters = tagParameters(context, logger);
+        if (parameters == null) {
             return null;
         }
-        boolean updateCpu = Boolean.TRUE.equals(
-                JsonUtil.boolPath(context.stdinJson(), "evaluation", "parameters", PARAM_UPDATE_CPU));
+        boolean tagUp = parameters.tagUp();
+        boolean updateCpu = parameters.updateCpu();
 
         if (AdaptSupport.rolloutInProgress(deployment)) {
             logger.info("Rollout in progress, skipping deployment patch");
@@ -242,6 +276,9 @@ public final class AdaptTagRuntime {
     }
 
     static boolean shouldUpdateCpu(Object initialMcpu, int currentMcpu) {
+        if (currentMcpu == 0) {
+            return false;
+        }
         if (initialMcpu instanceof Number number) {
             return number.doubleValue() != currentMcpu;
         }

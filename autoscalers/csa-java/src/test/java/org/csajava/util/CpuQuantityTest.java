@@ -22,6 +22,16 @@ public class CpuQuantityTest {
     }
 
     @Test
+    public void roundsFractionalMilliTiesToEvenLikePython() {
+        assertEquals(Integer.valueOf(2), CpuQuantity.parseToMilli("0.0025"));
+    }
+
+    @Test
+    public void parsesNanoValuesLargerThanAnInteger() {
+        assertEquals(Integer.valueOf(3000000), CpuQuantity.parseToMilli("3000000000000n"));
+    }
+
+    @Test
     public void rejectsInvalidValue() {
         assertNull(CpuQuantity.parseToMilli("abc"));
     }

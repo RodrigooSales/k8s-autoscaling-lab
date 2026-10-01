@@ -58,6 +58,32 @@ public class AdaptTagRuntimeTest {
         assertEquals(true, AdaptTagRuntime.shouldUpdateCpu("", 500));
         assertEquals(true, AdaptTagRuntime.shouldUpdateCpu("500", 500));
         assertEquals(false, AdaptTagRuntime.shouldUpdateCpu(500, 500));
+        assertEquals(false, AdaptTagRuntime.shouldUpdateCpu(500, 0));
+    }
+
+    @Test
+    public void parsesTagUpWithPythonTruthySemantics() {
+        RuntimeContext context = context("{\"tag_up\":\"false\"}", "100k");
+        TagApi api = new TagApi("registry.k8s.lab/kube-znn:200k", false, null);
+
+        JsonObject result = adapt(context, api);
+
+        assertEquals("400k", result.get("tag").getAsString());
+    }
+
+    @Test
+    public void parsesUpdateCpuWithPythonTruthySemantics() {
+        RuntimeContext context = context("{\"tag_up\":false,\"update_cpu\":\"false\"}");
+        TagApi api = new TagApi("registry.k8s.lab/kube-znn:600k", false, null);
+
+        JsonObject result = adapt(context, api);
+
+        assertEquals("400k", result.get("tag").getAsString());
+        assertEquals(List.of(
+                "GET /apis/apps/v1/namespaces/default/deployments/kube-znn",
+                "GET /api/v1/namespaces/default/pods?labelSelector=app%3Dkube-znn",
+                "PATCH /apis/apps/v1/namespaces/default/deployments/kube-znn"), api.trace);
+        assertEquals("700m", cpu(api.containers().get(0).getAsJsonObject()));
     }
 
     @Test
@@ -173,6 +199,10 @@ public class AdaptTagRuntimeTest {
     }
 
     private static RuntimeContext context(String parameters) {
+        return context(parameters, "600k");
+    }
+
+    private static RuntimeContext context(String parameters, String initialTag) {
         JsonObject stdin = JsonParser.parseString("""
                 {
                   "resource":{"metadata":{"name":"kube-znn","namespace":"default"}},
@@ -183,7 +213,7 @@ public class AdaptTagRuntimeTest {
                 stdin.toString(),
                 stdin,
                 Map.of(),
-                Map.of("stored_initial_tag", "600k", "stored_initial_mcpu", 500));
+                Map.of("stored_initial_tag", initialTag, "stored_initial_mcpu", 500));
     }
 
     private static String cpu(JsonObject container) {

@@ -19,8 +19,9 @@ public final class CpuQuantity {
         if (value.endsWith("n")) {
             String nanos = value.substring(0, value.length() - 1);
             try {
-                int parsed = Integer.parseInt(nanos);
-                return Math.max(1, parsed / 1_000_000);
+                long parsed = Long.parseLong(nanos);
+                long milli = Math.floorDiv(parsed, 1_000_000L);
+                return milli > Integer.MAX_VALUE ? null : (int) Math.max(1L, milli);
             } catch (NumberFormatException e) {
                 return null;
             }
@@ -28,7 +29,11 @@ public final class CpuQuantity {
 
         try {
             double cores = Double.parseDouble(value);
-            return Math.max(1, (int) Math.round(cores * 1000.0));
+            double milli = Math.rint(cores * 1000.0);
+            if (!Double.isFinite(milli) || milli > Integer.MAX_VALUE || milli < Integer.MIN_VALUE) {
+                return null;
+            }
+            return Math.max(1, (int) milli);
         } catch (NumberFormatException e) {
             return null;
         }

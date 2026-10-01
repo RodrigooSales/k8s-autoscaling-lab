@@ -66,6 +66,16 @@ public class InitialDataStoreTest {
     }
 
     @Test
+    public void doesNotCreateAnnotationsWhenTheLoadedPodHasNone() {
+        InitialDataApi api = new InitialDataApi(List.of("{}", "{}"), null, false);
+
+        store(api).storeTag("600k");
+
+        assertEquals(1, api.patches);
+        assertFalse(api.patchBody.toString(), api.patchBody.getAsJsonObject("metadata").has("annotations"));
+    }
+
+    @Test
     public void logsStatusAndMergeLikePython() throws Exception {
         InitialDataApi api = new InitialDataApi(List.of(
                 "{\"cpu_limit\":\"500\"}",
@@ -208,15 +218,21 @@ public class InitialDataStoreTest {
         private int patches;
         private JsonObject patchBody;
         private String patchContentType;
+        private final boolean annotationsPresent;
         private String currentAnnotation = "{\"tag\":\"800k\",\"annotation_only\":\"value\"}";
 
         private InitialDataApi(List<String> statuses) {
-            this(statuses, null);
+            this(statuses, null, true);
         }
 
         private InitialDataApi(List<String> statuses, String failingStep) {
+            this(statuses, failingStep, true);
+        }
+
+        private InitialDataApi(List<String> statuses, String failingStep, boolean annotationsPresent) {
             this.statuses = statuses;
             this.failingStep = failingStep;
+            this.annotationsPresent = annotationsPresent;
             OkHttpClient http = new OkHttpClient.Builder().addInterceptor(this::respond).build();
             client = new ApiClient();
             client.setBasePath("http://localhost");
@@ -254,18 +270,20 @@ public class InitialDataStoreTest {
                 response.add("status", statusBody);
                 body = response.toString();
             } else if (podRead) {
-                body = podJson(currentAnnotation);
+                body = podJson(currentAnnotation, annotationsPresent);
             } else {
                 patches++;
                 patchContentType = request.body().contentType().toString();
                 Buffer buffer = new Buffer();
                 request.body().writeTo(buffer);
                 patchBody = JsonParser.parseString(buffer.readUtf8()).getAsJsonObject();
-                currentAnnotation = patchBody.getAsJsonObject("metadata")
-                        .getAsJsonObject("annotations")
-                        .get(INITIAL_DATA)
-                        .getAsString();
-                body = podJson(currentAnnotation);
+                JsonObject metadata = patchBody.getAsJsonObject("metadata");
+                if (metadata.has("annotations")) {
+                    currentAnnotation = metadata.getAsJsonObject("annotations")
+                            .get(INITIAL_DATA)
+                            .getAsString();
+                }
+                body = podJson(currentAnnotation, annotationsPresent);
             }
 
             return new Response.Builder()
@@ -277,7 +295,7 @@ public class InitialDataStoreTest {
                     .build();
         }
 
-        private static String podJson(String annotation) {
+        private static String podJson(String annotation, boolean annotationsPresent) {
             JsonObject pod = JsonParser.parseString("""
                     {
                       "apiVersion":"v1",
@@ -285,13 +303,17 @@ public class InitialDataStoreTest {
                       "metadata":{
                         "name":"csa-znn",
                         "namespace":"default",
-                        "resourceVersion":"11",
-                        "annotations":{"unrelated":"keep"}
+                        "resourceVersion":"11"
                       },
                       "spec":{"containers":[{"name":"csa","image":"csa:latest"}]}
                     }
                     """).getAsJsonObject();
-            pod.getAsJsonObject("metadata").getAsJsonObject("annotations").addProperty(INITIAL_DATA, annotation);
+            if (annotationsPresent) {
+                JsonObject annotations = new JsonObject();
+                annotations.addProperty("unrelated", "keep");
+                annotations.addProperty(INITIAL_DATA, annotation);
+                pod.getAsJsonObject("metadata").add("annotations", annotations);
+            }
             return GSON.toJson(pod);
         }
     }

@@ -11,7 +11,6 @@ import io.kubernetes.client.openapi.apis.CustomObjectsApi;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.util.PatchUtils;
 import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.Map;
 import org.csajava.context.RuntimeContext;
 import org.csajava.io.JsonOut;
@@ -146,10 +145,10 @@ public final class InitialDataStore {
             logger.info(pythonRepr(initialData));
         }
 
-        if (selfPod.getMetadata().getAnnotations() == null) {
-            selfPod.getMetadata().setAnnotations(new HashMap<>());
+        Map<String, String> annotations = selfPod.getMetadata().getAnnotations();
+        if (annotations != null && !annotations.isEmpty()) {
+            annotations.put(ANNOTATION_TAG, JsonOut.stringify(initialData));
         }
-        selfPod.getMetadata().getAnnotations().put(ANNOTATION_TAG, JsonOut.stringify(initialData));
 
         try {
             V1Patch patch = new V1Patch(KubernetesJson.serialize(selfPod));
