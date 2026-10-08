@@ -248,11 +248,8 @@ def build_plot(plot_df: pd.DataFrame, output_path: Path) -> None:
     )
     configuration_colors = build_category_colors(plot_df)
 
-    fig = plt.figure(figsize=(18, 10), layout="constrained")
-    grid = fig.add_gridspec(1, 2, width_ratios=[4.8, 1.2])
-    ax = fig.add_subplot(grid[0, 0])
-    legend_ax = fig.add_subplot(grid[0, 1])
-    legend_ax.axis("off")
+    fig = plt.figure(figsize=(19, 10))
+    ax = fig.add_axes([0.05, 0.08, 0.70, 0.88])
     for idx, row in plot_df.iterrows():
         is_pareto = bool(row["pareto_frontier"])
         ax.scatter(
@@ -295,19 +292,22 @@ def build_plot(plot_df: pd.DataFrame, output_path: Path) -> None:
         )
         for idx, row in legend_df.iterrows()
     ]
-    configuration_legend = legend_ax.legend(
+    legend_axes = [fig.add_axes([0.78, 0.1, 0.21, 0.8]) for _ in range(3)]
+    scenario_legend_ax, size_legend_ax, highlight_legend_ax = legend_axes
+    for legend_ax in (scenario_legend_ax, size_legend_ax, highlight_legend_ax):
+        legend_ax.axis("off")
+
+    scenario_legend_ax.legend(
         handles=configuration_handles,
         title="Cenarios",
         loc="upper left",
         bbox_to_anchor=(0.0, 1.0),
         borderaxespad=0.0,
-        markerscale=1.6,
+        markerscale=1.8,
         frameon=True,
-        title_fontsize=LEGEND_TITLE_FONT_SIZE,
-        fontsize=LEGEND_ITEM_FONT_SIZE,
+        title_fontsize=LEGEND_TITLE_FONT_SIZE + 2,
+        fontsize=LEGEND_ITEM_FONT_SIZE + 4,
     )
-    legend_ax.add_artist(configuration_legend)
-
     reference_values = select_legend_size_values(plot_df["response_size_mean"], count=2)
     size_handles = []
     for value in reference_values:
@@ -331,11 +331,11 @@ def build_plot(plot_df: pd.DataFrame, output_path: Path) -> None:
                 label=format_byte_size(float(value), precision=2),
             )
         )
-    size_legend = legend_ax.legend(
+    size_legend_ax.legend(
         handles=size_handles,
         title="Tamanho medio da resposta",
         loc="upper left",
-        bbox_to_anchor=(0.0, 0.53),
+        bbox_to_anchor=(0.0, 1.0),
         borderaxespad=0.0,
         frameon=True,
         labelspacing=1.0,
@@ -344,9 +344,7 @@ def build_plot(plot_df: pd.DataFrame, output_path: Path) -> None:
         title_fontsize=LEGEND_TITLE_FONT_SIZE,
         fontsize=LEGEND_ITEM_FONT_SIZE,
     )
-    legend_ax.add_artist(size_legend)
-
-    legend_ax.legend(
+    highlight_legend_ax.legend(
         handles=[
             Line2D(
                 [],
@@ -362,12 +360,33 @@ def build_plot(plot_df: pd.DataFrame, output_path: Path) -> None:
         ],
         title="Destaque",
         loc="upper left",
-        bbox_to_anchor=(0.0, 0.25),
+        bbox_to_anchor=(0.0, 1.0),
         borderaxespad=0.0,
         frameon=True,
         title_fontsize=LEGEND_TITLE_FONT_SIZE,
         fontsize=LEGEND_ITEM_FONT_SIZE,
     )
+
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    legend_heights = [
+        legend_ax.get_legend().get_window_extent(renderer).height / fig.dpi
+        for legend_ax in legend_axes
+    ]
+    legend_gap = 0.12
+    legend_row_heights = [
+        legend_heights[0] + legend_gap,
+        legend_heights[1] + legend_gap,
+        legend_heights[2] + 0.04,
+    ]
+    figure_height = max(10, sum(legend_row_heights) / 0.92)
+    fig.set_size_inches(fig.get_figwidth(), figure_height, forward=True)
+    legend_top = 0.96
+    for legend_ax, row_height in zip(legend_axes, legend_row_heights):
+        axis_height = row_height / figure_height
+        legend_bottom = legend_top - axis_height
+        legend_ax.set_position((0.78, legend_bottom, 0.21, axis_height))
+        legend_top = legend_bottom
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300)
