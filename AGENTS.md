@@ -101,14 +101,17 @@ Keep CSA chart and legend labels in the established `CSA <implementation> <scena
 
 ## Commit & Pull Request Guidelines
 
-- Keep all project work in the personal fork. Never open pull requests against the upstream/original repository.
-- Never commit directly to the fork's `main` or any branch whose name starts with `csa-`. Work in a separate Git worktree or branch and open a pull request to the intended protected branch within the fork.
-- Name working branches using Conventional Branches style: `<type>/<short-kebab-case-description>`, with types aligned to Conventional Commits, such as `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, or `perf/`.
+- During the current development phase, use `dev` as the primary integration branch. Base feature branches on `dev`; keep `main` out of the workflow until the user changes this direction.
+- Work on feature branches named `<type>/<short-kebab-case-description>`, with types aligned to Conventional Branches and Conventional Commits, such as `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, or `perf/`. Do not commit changes directly to `dev`.
+- Create every new Git worktree under `.worktrees/` in the repository root, for example `.worktrees/<short-task-name>`. Create `.worktrees/` first when it does not exist.
+- When an activity in a worktree is complete, preserve any required changes in commits or another durable location, then remove the worktree with `git worktree remove .worktrees/<short-task-name>`. Do not leave completed activity worktrees behind; keep or delete the associated branch according to whether its work is still needed.
+- Create or open a pull request only when the user explicitly asks. Until then, keep the work on its feature branch.
+- When requested, target `dev` unless the user specifies another branch. Use a concise, descriptive title and a detailed description of the objective, changes, impact, and verification so reviewers can assess the work.
 - Keep each pull request focused on one objective and limit it to at most 500 lines of production logic. Tests, documentation, and configuration do not count toward this limit. Split larger changes into separate pull requests.
 - Prefer removing or simplifying existing code over adding new code.
 - Document all work, decisions, relevant commands, and validation results in the appropriate project documentation.
 
-Use short, imperative Conventional Commit subjects, for example `fix(csa-java): handle null evaluation`. Keep one logical change per commit and stage explicitly. Pull requests explain scope and cluster impact, link applicable issues, and list verification. Attach plots for visual changes; avoid unrelated bulk results.
+Use short, imperative Conventional Commit subjects, for example `fix(csa-java): handle null evaluation`. Keep one logical change per commit and stage explicitly. Pull requests should explain scope and cluster impact, link applicable issues, and list verification. Attach plots for visual changes; avoid unrelated bulk results.
 
 ## Security & Configuration
 
