@@ -8,17 +8,17 @@ prontidão não executou carga; uma iteração Go autorizada depois está docume
 
 ## Runtime e operador
 
-O [executor shell](../../../../custom-self-adapter/internal/execute/shell/shell.go#L55)
+O [executor shell](../../../custom-self-adapter/internal/execute/shell/shell.go#L55)
 inicia um processo por etapa e captura stdout/stderr. O timer usa timeout em milissegundos
 e é armado após cmd.Start(). No timeout, o processo é morto e a execução é reportada como erro.
 O parâmetro é um limite de espera, não uma duração desejada nem uma aceleração do código.
 
 Quando evaluate retorna vazio, o
-[consumidor](../../../../custom-self-adapter/internal/evaluatecalc/evaluatecalc.go#L69)
+[consumidor](../../../custom-self-adapter/internal/evaluatecalc/evaluatecalc.go#L69)
 tenta json.Unmarshal e produz erro. Portanto, a ausência de adaptação do script não equivale
 automaticamente a um ciclo bem-sucedido do runtime. Não mudar esse contrato só no Go.
 
-O [operador](../../../../custom-self-adapter-operator/internal/reconcile/reconcile.go#L328)
+O [operador](../../../custom-self-adapter-operator/internal/reconcile/reconcile.go#L328)
 transfere a anotação initialData para o status e sinaliza sua limpeza.
 A anotação não é um cache imediatamente consistente do status.
 
@@ -69,8 +69,8 @@ e os digests das imagens. Fontes locais: `client-go/rest/config.go`, `client-go/
 
 ## Parâmetros observados
 
-Fontes: [config Python](../../csa/config.yaml), [config Java](../../csa-java/config.yaml),
-[perfis Java](../../csa-java/profiles).
+Fontes: [config Python](../../autoscalers/csa/config.yaml), [config Java](../../autoscalers/csa-java/config.yaml),
+[perfis Java](../../autoscalers/csa-java/profiles).
 
 | Parâmetro | Python | Java | Go |
 |---|---:|---:|---:|
@@ -93,7 +93,7 @@ foram inspecionadas na entrega 6 e seus digests estão em
 [validacao-funcional.md](validacao-funcional.md). Manifests com tags h/hq/v/vq não provam
 sozinhos qual configuração está efetivamente dentro de uma imagem.
 
-Os [manifests](../../csa/custom-selfadapter-template.yaml) usam csa-znn no namespace
+Os [manifests](../../autoscalers/csa/custom-selfadapter-template.yaml) usam csa-znn no namespace
 default e alvo kube-znn, com requests 128m/128Mi e limits 1024m/1024Mi.
 Esses recursos do adaptador são diferentes do maxCPU=750 aplicado aos containers do alvo.
 A regra adicional dá patch em pods/resize.
@@ -115,9 +115,9 @@ e a confirmação desses valores sob carga segue reservada às execuções do us
 
 | Arquivo | Observação estática |
 |---|---|
-| [run_tests.sh](../../../run_tests.sh) | Matriz completa de cenários Python, Java e Go. |
-| [run_tests_csa.sh](../../../run_tests_csa.sh) | Cenários CSA Java preservados e cenários CSA Go acrescentados. |
-| [run_tests_by_cenary.sh](../../../run_tests_by_cenary.sh) | Seletores base,hpa,csa,csa-java,csa-go,vpa,all. |
+| [run_tests.sh](../../run_tests.sh) | Matriz completa de cenários Python, Java e Go. |
+| [run_tests_csa.sh](../../run_tests_csa.sh) | Cenários CSA Java preservados e cenários CSA Go acrescentados. |
+| [run_tests_by_cenary.sh](../../run_tests_by_cenary.sh) | Seletores base,hpa,csa,csa-java,csa-go,vpa,all. |
 
 Na matriz geral, o bloco Python HQ 25% remove o CSA antes do cenário seguinte.
 O bloco Java HQ 25% não o remove antes do HQ 50% (linhas 159–182).
@@ -250,7 +250,7 @@ rodada única sem versões Python/Java comparáveis não permite concluir perfor
 
 ## O que os CSVs permitem observar
 
-[extract_prom.py](../../../extract_prom.py#L16) coleta latência, throughput, proporção
+[extract_prom.py](../../extract_prom.py#L16) coleta latência, throughput, proporção
 de respostas 200, SLO, Pods por tag e limites de CPU do alvo; o cenário Locust acrescenta
 seus dados de usuários e respostas.
 

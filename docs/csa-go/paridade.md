@@ -21,9 +21,9 @@ Python e serão consumidos pelos testes Go.
 | Estado | Leitura do status e escrita da anotação no Pod. Preservar a janela de reconciliação e as releituras. |
 | Sem seleção | A avaliação emite stdout vazio. Não substituir automaticamente por {}, null ou uma estratégia nova. |
 
-Fontes: [metric_nginx_req_duration.py:13](../../csa/scripts/metric_nginx_req_duration.py#L13), [evaluate.py:28](../../csa/scripts/evaluate.py#L28),
-[adapt_base.py:96](../../csa/scripts/adapt_base.py#L96), [adapt_cpu.py:57](../../csa/scripts/adapt_cpu.py#L57),
-[adapt_tag.py:90](../../csa/scripts/adapt_tag.py#L90), [adapt_replicas.py:34](../../csa/scripts/adapt_replicas.py#L34).
+Fontes: [metric_nginx_req_duration.py:13](../../autoscalers/csa/scripts/metric_nginx_req_duration.py#L13), [evaluate.py:28](../../autoscalers/csa/scripts/evaluate.py#L28),
+[adapt_base.py:96](../../autoscalers/csa/scripts/adapt_base.py#L96), [adapt_cpu.py:57](../../autoscalers/csa/scripts/adapt_cpu.py#L57),
+[adapt_tag.py:90](../../autoscalers/csa/scripts/adapt_tag.py#L90), [adapt_replicas.py:34](../../autoscalers/csa/scripts/adapt_replicas.py#L34).
 
 ## Diferenças e casos delicados identificados
 
@@ -34,9 +34,9 @@ CpuQuantity. Para valores de meia unidade par, como o cálculo 2.5 millicores, a
 diferem. É uma diferença deduzida do código dos helpers; o SDK pode normalizar a quantidade
 antes de chamar o helper em produção. Confirmar essa trajetória antes de generalizar.
 
-Fontes: [adapt_base.py:146](../../csa/scripts/adapt_base.py#L146) e [CpuQuantity.java:7](../../csa-java/src/main/java/org/csajava/util/CpuQuantity.java#L7).
+Fontes: [adapt_base.py:146](../../autoscalers/csa/scripts/adapt_base.py#L146) e [CpuQuantity.java:7](../../autoscalers/csa-java/src/main/java/org/csajava/util/CpuQuantity.java#L7).
 Não confundir com o cálculo de resize: Java usa Math.rint, e há teste de arredondamento
-para par em [AdaptCpuRuntimeTest.java:30](../../csa-java/src/test/java/org/csajava/runtime/adapt/cpu/AdaptCpuRuntimeTest.java#L30).
+para par em [AdaptCpuRuntimeTest.java:30](../../autoscalers/csa-java/src/test/java/org/csajava/runtime/adapt/cpu/AdaptCpuRuntimeTest.java#L30).
 O helper Java de nanos usa Integer.parseInt, que também limita a faixa em comparação ao int Python.
 
 ### D02 — tipos retornados pela métrica
@@ -49,8 +49,8 @@ string usuais coincidem.
 O fixture metric_numeric_value_types registra a saída numérica esperada pelo Python para
 ser usada no teste Go. Ele não contém uma saída Java alternativa.
 
-Fontes: [metric_nginx_req_duration.py:13](../../csa/scripts/metric_nginx_req_duration.py#L13),
-[MetricRuntime.java:30](../../csa-java/src/main/java/org/csajava/runtime/metric/MetricRuntime.java#L30) e [JsonUtil.java:70](../../csa-java/src/main/java/org/csajava/util/JsonUtil.java#L70).
+Fontes: [metric_nginx_req_duration.py:13](../../autoscalers/csa/scripts/metric_nginx_req_duration.py#L13),
+[MetricRuntime.java:30](../../autoscalers/csa-java/src/main/java/org/csajava/runtime/metric/MetricRuntime.java#L30) e [JsonUtil.java:70](../../autoscalers/csa-java/src/main/java/org/csajava/util/JsonUtil.java#L70).
 
 Na entrega 3, Go manteve os valores como `json.RawMessage` e serializa os tipos JSON
 recebidos sem coerção. Os dois fixtures de métrica verificam a primeira entrada e os tipos
@@ -63,7 +63,7 @@ abertura propaga. Java tenta também config.yaml local e pode devolver mapa vazi
 levando aos defaults. As configurações válidas versionadas coincidem nos parâmetros
 comportamentais, mas isso não prova equivalência em falhas.
 
-Fontes: [adapt_base.py:133](../../csa/scripts/adapt_base.py#L133), [ConfigLoader.java:15](../../csa-java/src/main/java/org/csajava/config/ConfigLoader.java#L15).
+Fontes: [adapt_base.py:133](../../autoscalers/csa/scripts/adapt_base.py#L133), [ConfigLoader.java:15](../../autoscalers/csa-java/src/main/java/org/csajava/config/ConfigLoader.java#L15).
 
 ### D04 — Pod do CSA sem annotations
 
@@ -72,8 +72,8 @@ o atribui de volta a self_pod.metadata.annotations antes do patch. Java faz essa
 A leitura indica comportamento diferente nesse caso; o comportamento efetivo da serialização
 e do API server ainda não foi exercitado.
 
-Fontes: [initial_data.py:63](../../csa/scripts/initial_data.py#L63),
-[InitialDataStore.java:149](../../csa-java/src/main/java/org/csajava/runtime/initialdata/InitialDataStore.java#L149).
+Fontes: [initial_data.py:63](../../autoscalers/csa/scripts/initial_data.py#L63),
+[InitialDataStore.java:149](../../autoscalers/csa-java/src/main/java/org/csajava/runtime/initialdata/InitialDataStore.java#L149).
 
 ### D05 — primeiro ciclo e atraso de reconciliação
 
@@ -82,9 +82,9 @@ initial_mcpu=0 quando não há valor armazenado. Corrigir esse valor no Go alter
 primeira decisão. Além disso, duas escritas antes da reconciliação podem sobrescrever
 campos da anotação em vez de acumular estado.
 
-Fontes: [evaluate.py:50](../../csa/scripts/evaluate.py#L50),
-[EvaluateRuntime.java:330](../../csa-java/src/main/java/org/csajava/runtime/evaluate/EvaluateRuntime.java#L330),
-[InitialDataStoreTest.java:123](../../csa-java/src/test/java/org/csajava/runtime/initialdata/InitialDataStoreTest.java#L123).
+Fontes: [evaluate.py:50](../../autoscalers/csa/scripts/evaluate.py#L50),
+[EvaluateRuntime.java:330](../../autoscalers/csa-java/src/main/java/org/csajava/runtime/evaluate/EvaluateRuntime.java#L330),
+[InitialDataStoreTest.java:123](../../autoscalers/csa-java/src/test/java/org/csajava/runtime/initialdata/InitialDataStoreTest.java#L123).
 O teste Java é evidência da intenção do contrato existente, não um teste executado nesta entrega.
 
 ### D06 — truthiness, ausência de CPU e entradas inválidas
@@ -94,9 +94,9 @@ Python e Java também têm diferenças de validação e tratamento de valores au
 Na tag, o Python exige current_mcpu truthy para atualizar os limites; Java testa non-null
 no ramo de atualização. São pontos de caracterização, não equivalência garantida.
 
-Fontes: [adapt_tag.py:58](../../csa/scripts/adapt_tag.py#L58), [adapt_tag.py:110](../../csa/scripts/adapt_tag.py#L110),
-[AdaptTagRuntime.java:154](../../csa-java/src/main/java/org/csajava/runtime/adapt/tag/AdaptTagRuntime.java#L154),
-[AdaptTagRuntime.java:198](../../csa-java/src/main/java/org/csajava/runtime/adapt/tag/AdaptTagRuntime.java#L198), [JsonUtil.java:106](../../csa-java/src/main/java/org/csajava/util/JsonUtil.java#L106).
+Fontes: [adapt_tag.py:58](../../autoscalers/csa/scripts/adapt_tag.py#L58), [adapt_tag.py:110](../../autoscalers/csa/scripts/adapt_tag.py#L110),
+[AdaptTagRuntime.java:154](../../autoscalers/csa-java/src/main/java/org/csajava/runtime/adapt/tag/AdaptTagRuntime.java#L154),
+[AdaptTagRuntime.java:198](../../autoscalers/csa-java/src/main/java/org/csajava/runtime/adapt/tag/AdaptTagRuntime.java#L198), [JsonUtil.java:106](../../autoscalers/csa-java/src/main/java/org/csajava/util/JsonUtil.java#L106).
 
 ## Consequência para a comparação
 
@@ -104,7 +104,7 @@ Decisões e patches compatíveis nos casos usuais não equivalem a paridade exau
 As diferenças observadas permanecem documentadas acima. Os contratos não guardam resultados
 esperados específicos do Java e não afirmam equivalência onde o comportamento diverge.
 Não corrigir diferenças nem otimizações nas referências nesta branch. As propostas de reduzir trabalho estão separadas em
-[melhorias de performance](melhorias-de-performance.md).
+[melhorias de performance](../melhorias-de-performance.md).
 
 ## D07 — avaliação e persistência initialData Go
 

@@ -53,11 +53,11 @@ salvos com nomes exclusivos em `tests/results/`:
 
 | Perfil | CSV |
 |---|---|
-| h | [01_3_csa_go_h.csv](../../../tests/results/01_3_csa_go_h.csv) |
-| hq, rollout 25% | [01_3_csa_go_hq_25.csv](../../../tests/results/01_3_csa_go_hq_25.csv) |
-| hq, rollout 50% | [01_3_csa_go_hq_50.csv](../../../tests/results/01_3_csa_go_hq_50.csv) |
-| v | [01_6_csa_go_v.csv](../../../tests/results/01_6_csa_go_v.csv) |
-| vq | [01_6_csa_go_vq.csv](../../../tests/results/01_6_csa_go_vq.csv) |
+| h | [01_3_csa_go_h.csv](../../tests/results/01_3_csa_go_h.csv) |
+| hq, rollout 25% | [01_3_csa_go_hq_25.csv](../../tests/results/01_3_csa_go_hq_25.csv) |
+| hq, rollout 50% | [01_3_csa_go_hq_50.csv](../../tests/results/01_3_csa_go_hq_50.csv) |
+| v | [01_6_csa_go_v.csv](../../tests/results/01_6_csa_go_v.csv) |
+| vq | [01_6_csa_go_vq.csv](../../tests/results/01_6_csa_go_vq.csv) |
 
 Os scripts `run_tests*` agora formatam o número da iteração com largura mínima de dois
 dígitos. Assim, uma execução única recebe prefixo `01`, enquanto as iterações seguintes
@@ -135,7 +135,7 @@ Os status reportados foram:
   de 1.000 ms. Em ciclos abaixo de 0,90 do alvo, com réplicas já no mínimo e sem outra
   estratégia habilitada, evaluate não escreveu resultado JSON. O runtime registrou erro ao
   tentar interpretar stdout vazio. A referência Python também termina sem JSON nesse ramo
-  (`No adaptation selected` em [evaluate.py](../../csa/scripts/evaluate.py)); não é uma
+  (`No adaptation selected` em [evaluate.py](../../autoscalers/csa/scripts/evaluate.py)); não é uma
   divergência exclusiva do Go.
 - **hq 25% e 50%:** ambas atingiram cinco réplicas durante o pico e reduziram a imagem de
   `800k` até `100k`; os limites permaneceram em `150m`. O estado inicial foi

@@ -8,21 +8,21 @@ Diretório de trabalho: `k8s-autoscaling-lab/autoscalers`, salvo indicação da 
 
 Foram encontrados 1.050 CSVs de execução: 21 cenários com 50 arquivos cada, incluindo
 250 arquivos Go (H, HQ 25, HQ 50, V e VQ), numerados de `01` a `50`.
-O notebook [leitura_resultados.ipynb](../../../tests/notebooks/leitura_resultados.ipynb)
+O notebook [leitura_resultados.ipynb](../../tests/notebooks/leitura_resultados.ipynb)
 já descobre os CSVs automaticamente, mas faltavam rótulos e cores explícitos para Go.
 Além disso, a classificação genérica `csa_` agrupava as bolhas Go com as Python.
 
 Mudanças:
 
-- [plot_comparison_common.py](../../../plot_comparison_common.py): nomes `CSA Go ...`
+- [plot_comparison_common.py](../../plot_comparison_common.py): nomes `CSA Go ...`
   e cinco tons de ciano, compartilhados pelo notebook e pelos gráficos agregados.
-- [plot_comparison_bubble.py](../../../plot_comparison_bubble.py): categoria `CSA Go`,
+- [plot_comparison_bubble.py](../../plot_comparison_bubble.py): categoria `CSA Go`,
   identificada antes de `csa_`, com cor própria e posição na legenda.
 - Notebook: explicação dos perfis Go e atualização dos resultados e das oito figuras.
   A largura dos boxplots acompanha a quantidade de cenários e a legenda estatística fica
   fora da área dos eixos, com espaço reservado pelo layout. Na inspeção inicial das imagens
   com 21 cenários, a posição anterior da legenda se sobrepunha a alguns rótulos.
-- [test_plot_comparison.py](../../../tests/test_plot_comparison.py): regressão da
+- [test_plot_comparison.py](../../tests/test_plot_comparison.py): regressão da
   descoberta/rotulagem, classificação de Go e preservação das cores Python/Java nas bolhas.
 
 Os cálculos de métricas, SLO, agregação e Pareto seguem as funções existentes.

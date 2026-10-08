@@ -7,7 +7,7 @@ Revisão: `3e0e43035a8766eafbbdf507bd25d1d238d3fa5d`.
 
 Este registro documenta comandos, fontes, resultados e decisões. Os comandos em blocos
 são transcrições, não instruções para executar experimentos. Fontes e conclusões detalhadas
-estão em [levantamento](levantamento.md), [melhorias](melhorias-de-performance.md),
+estão em [levantamento](levantamento.md), [melhorias](../melhorias-de-performance.md),
 [paridade](paridade.md), [testes](testes-unitarios.md) e [integração](integracao-e-timeouts.md).
 Não houve pesquisa web nesta investigação. Resultados extensos de código não são duplicados
 aqui; algumas saídas foram truncadas pela ferramenta e complementadas com leituras dirigidas.

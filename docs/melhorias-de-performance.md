@@ -1,7 +1,7 @@
 # Possíveis melhorias de performance — Python, Java e Go
 
-Data: 2026-09-23. Baseline e limites em [levantamento](levantamento.md).
-Comandos e contexto em [registro da investigação](comandos-investigacao.md).
+Data: 2026-09-23. Baseline e limites em [levantamento](csa-go/levantamento.md).
+Comandos e contexto em [registro da investigação](csa-go/comandos-investigacao.md).
 
 ## Classificação e regra de comparação
 
@@ -18,7 +18,7 @@ A comparação empírica ocorrerá depois das cargas executadas pelo usuário.
 
 ## P01 — inicialização de um processo por etapa
 
-**Evidência:** [executor shell](../../../../custom-self-adapter/internal/execute/shell/shell.go#L55)
+**Evidência:** [executor shell](../../custom-self-adapter/internal/execute/shell/shell.go#L55)
 cria e inicia um comando por chamada. As configurações Python invocam scripts; Java invoca
 o launcher da distribuição. O Go seguirá o mesmo ciclo. Imports, classes, cliente e estado
 em memória não sobrevivem entre esses processos.
@@ -37,10 +37,10 @@ ganho de uma mudança de arquitetura.
 
 ## P02 — duas listagens de Pods na adaptação de CPU
 
-**Evidência:** [adapt_cpu.py:57](../../csa/scripts/adapt_cpu.py#L57) obtém a lista usada no resize;
-[adapt_base.py:119](../../csa/scripts/adapt_base.py#L119) lista novamente para obter a CPU atual.
-Java repete esse fluxo em [AdaptCpuRuntime.java:176](../../csa-java/src/main/java/org/csajava/runtime/adapt/cpu/AdaptCpuRuntime.java#L176).
-O teste [AdaptCpuRuntimeTest.java:43](../../csa-java/src/test/java/org/csajava/runtime/adapt/cpu/AdaptCpuRuntimeTest.java#L43) exige duas listagens.
+**Evidência:** [adapt_cpu.py:57](../autoscalers/csa/scripts/adapt_cpu.py#L57) obtém a lista usada no resize;
+[adapt_base.py:119](../autoscalers/csa/scripts/adapt_base.py#L119) lista novamente para obter a CPU atual.
+Java repete esse fluxo em [AdaptCpuRuntime.java:176](../autoscalers/csa-java/src/main/java/org/csajava/runtime/adapt/cpu/AdaptCpuRuntime.java#L176).
+O teste [AdaptCpuRuntimeTest.java:43](../autoscalers/csa-java/src/test/java/org/csajava/runtime/adapt/cpu/AdaptCpuRuntimeTest.java#L43) exige duas listagens.
 
 **Hipótese/proposta:** calcular a CPU a partir da primeira lista poderia eliminar um GET
 por adaptação bem-sucedida nesse caminho. Aplicável a Python, Java e futuro Go.
@@ -55,14 +55,14 @@ Preservar as duas consultas no baseline.
 
 ## P03 — releituras e persistência indireta de initialData
 
-**Evidência:** [initial_data.py:75](../../csa/scripts/initial_data.py#L75) lê o status a cada consulta.
+**Evidência:** [initial_data.py:75](../autoscalers/csa/scripts/initial_data.py#L75) lê o status a cada consulta.
 Gravar um campo ausente passa por leitura do status, leitura do Pod, nova leitura do status
 e patch do Pod. Java segue o fluxo em
-[InitialDataStore.java:94](../../csa-java/src/main/java/org/csajava/runtime/initialdata/InitialDataStore.java#L94).
+[InitialDataStore.java:94](../autoscalers/csa-java/src/main/java/org/csajava/runtime/initialdata/InitialDataStore.java#L94).
 O operador transfere a anotação para status de forma assíncrona
-([statusSync](../../../../custom-self-adapter-operator/internal/reconcile/reconcile.go#L328)).
+([statusSync](../../custom-self-adapter-operator/internal/reconcile/reconcile.go#L328)).
 Os testes existentes explicitam releitura e perda de um primeiro campo quando duas escritas
-ocorrem antes da reconciliação ([InitialDataStoreTest.java:100](../../csa-java/src/test/java/org/csajava/runtime/initialdata/InitialDataStoreTest.java#L100)).
+ocorrem antes da reconciliação ([InitialDataStoreTest.java:100](../autoscalers/csa-java/src/test/java/org/csajava/runtime/initialdata/InitialDataStoreTest.java#L100)).
 
 **Hipótese/proposta:** reutilizar uma leitura dentro da operação, agrupar persistências
 ou redesenhar o armazenamento pode reduzir GETs/PATCHes e parsing. Aplicável às três
@@ -78,10 +78,10 @@ resultado das adaptações sob carga depois de definir a política comum de cons
 
 ## P04 — consultas de CPU antes de decidir se serão usadas
 
-**Evidência:** [evaluate.py:45](../../csa/scripts/evaluate.py#L45) lê CPU atual e inicial antes de selecionar qualquer
+**Evidência:** [evaluate.py:45](../autoscalers/csa/scripts/evaluate.py#L45) lê CPU atual e inicial antes de selecionar qualquer
 estratégia, mesmo quando somente réplicas estão habilitadas ou a razão está na banda sem
 adaptação. Java resolve o mesmo estado antes das decisões em
-[EvaluateRuntime.java:112](../../csa-java/src/main/java/org/csajava/runtime/evaluate/EvaluateRuntime.java#L112).
+[EvaluateRuntime.java:112](../autoscalers/csa-java/src/main/java/org/csajava/runtime/evaluate/EvaluateRuntime.java#L112).
 
 **Hipótese/proposta:** consultar estado sob demanda poderia reduzir chamadas nos perfis
 horizontais e em avaliações sem adaptação. Aplicável às três linguagens.
@@ -96,8 +96,8 @@ medir a variante equivalente nas três implementações.
 
 ## P05 — patches contendo o objeto carregado
 
-**Evidência:** [adapt_replicas.py:13](../../csa/scripts/adapt_replicas.py#L13), [adapt_tag.py:122](../../csa/scripts/adapt_tag.py#L122) e
-[initial_data.py:63](../../csa/scripts/initial_data.py#L63) enviam respectivamente o Deployment ou Pod carregado, com a
+**Evidência:** [adapt_replicas.py:13](../autoscalers/csa/scripts/adapt_replicas.py#L13), [adapt_tag.py:122](../autoscalers/csa/scripts/adapt_tag.py#L122) e
+[initial_data.py:63](../autoscalers/csa/scripts/initial_data.py#L63) enviam respectivamente o Deployment ou Pod carregado, com a
 alteração desejada. Java serializa esses objetos completos nos caminhos equivalentes.
 
 **Hipótese/proposta:** patches menores podem reduzir serialização e bytes enviados.
@@ -114,11 +114,11 @@ Preservar os corpos de referência nesta branch.
 
 ## P06 — escrita síncrona e abertura dos destinos de log
 
-**Evidência:** [adapter_logger.py:3](../../csa/scripts/adapter_logger.py#L3) constrói FileHandler e StreamHandler a cada
+**Evidência:** [adapter_logger.py:3](../autoscalers/csa/scripts/adapter_logger.py#L3) constrói FileHandler e StreamHandler a cada
 instanciação, antes de basicConfig; isso não significa que cada instanciação instale novos
 handlers, pois a configuração do logger raiz pode já existir.
-[AdapterLogger.java:30](../../csa-java/src/main/java/org/csajava/logging/AdapterLogger.java#L30) abre um BufferedWriter por instância, e
-[AdapterLogger.java:57](../../csa-java/src/main/java/org/csajava/logging/AdapterLogger.java#L57) executa flush por mensagem e escreve em stderr.
+[AdapterLogger.java:30](../autoscalers/csa-java/src/main/java/org/csajava/logging/AdapterLogger.java#L30) abre um BufferedWriter por instância, e
+[AdapterLogger.java:57](../autoscalers/csa-java/src/main/java/org/csajava/logging/AdapterLogger.java#L57) executa flush por mensagem e escreve em stderr.
 Não há fechamento explícito do writer nessa classe; os processos são curtos.
 
 **Hipótese/proposta:** compartilhar destinos por processo mantendo flush e eventos pode
@@ -136,10 +136,10 @@ a mesma política de logging; não desabilitar logs apenas no Go.
 
 ## P07 — inicialização e imports com efeitos colaterais no Python
 
-**Evidência:** [evaluate.py:5](../../csa/scripts/evaluate.py#L5) importa módulos de adaptação para acessar constantes.
+**Evidência:** [evaluate.py:5](../autoscalers/csa/scripts/evaluate.py#L5) importa módulos de adaptação para acessar constantes.
 Esses módulos importam initial_data, que configura autenticação, logger e clientes durante
-o import ([initial_data.py:13](../../csa/scripts/initial_data.py#L13)). AdaptContext configura novamente o acesso
-([adapt_base.py:58](../../csa/scripts/adapt_base.py#L58)). get_csa_status constrói CustomObjectsApi a cada leitura.
+o import ([initial_data.py:13](../autoscalers/csa/scripts/initial_data.py#L13)). AdaptContext configura novamente o acesso
+([adapt_base.py:58](../autoscalers/csa/scripts/adapt_base.py#L58)). get_csa_status constrói CustomObjectsApi a cada leitura.
 O objeto appsV1 de initial_data é criado, mas não utilizado no próprio módulo.
 
 **Hipótese/proposta:** separar constantes sem efeitos colaterais, remover a instanciação
@@ -159,10 +159,10 @@ Não mover inicialização nem constantes nas referências nesta branch.
 ## P08 — parsing duplicado e serialização repetida no Python
 
 **Evidência:** AdaptContext já faz json.loads do stdin
-([adapt_base.py:40](../../csa/scripts/adapt_base.py#L40)), e evaluate faz novamente
-([evaluate.py:28](../../csa/scripts/evaluate.py#L28)). A métrica embutida em metrics[0].value exige outro parsing por
+([adapt_base.py:40](../autoscalers/csa/scripts/adapt_base.py#L40)), e evaluate faz novamente
+([evaluate.py:28](../autoscalers/csa/scripts/evaluate.py#L28)). A métrica embutida em metrics[0].value exige outro parsing por
 contrato; esse segundo formato não é a mesma duplicação. write_evaluation serializa a
-mesma avaliação para log e stdout ([evaluate.py:93](../../csa/scripts/evaluate.py#L93)).
+mesma avaliação para log e stdout ([evaluate.py:93](../autoscalers/csa/scripts/evaluate.py#L93)).
 
 **Hipótese/proposta:** reutilizar ctx.spec e uma string de avaliação pode reduzir parsing
 e alocações Python. Java já retém stdinJson, mas também serializa a avaliação para log
@@ -178,11 +178,11 @@ irrelevante frente à latência das APIs.
 
 ## P09 — conversões intermediárias na serialização Java
 
-**Evidência:** [KubernetesJson.java:15](../../csa-java/src/main/java/org/csajava/kubernetes/KubernetesJson.java#L15) faz modelo → string JSON →
+**Evidência:** [KubernetesJson.java:15](../autoscalers/csa-java/src/main/java/org/csajava/kubernetes/KubernetesJson.java#L15) faz modelo → string JSON →
 árvore Gson → remoção recursiva de vazios → string. Em réplicas há mais um parse e
-toString ([AdaptReplicasRuntime.java:87](../../csa-java/src/main/java/org/csajava/runtime/adapt/replicas/AdaptReplicasRuntime.java#L87)).
+toString ([AdaptReplicasRuntime.java:87](../autoscalers/csa-java/src/main/java/org/csajava/runtime/adapt/replicas/AdaptReplicasRuntime.java#L87)).
 JsonOut também implementa um escritor próprio para compatibilidade com o JSON Python
-([JsonOut.java:17](../../csa-java/src/main/java/org/csajava/io/JsonOut.java#L17)).
+([JsonOut.java:17](../autoscalers/csa-java/src/main/java/org/csajava/io/JsonOut.java#L17)).
 
 **Hipótese/proposta:** reduzir representações intermediárias pode diminuir CPU e alocações
 Java. A mesma preocupação vale ao futuro Go; não foi identificado esse mesmo percurso
@@ -198,11 +198,11 @@ Java estiver aprovada em branch própria.
 
 ## P10 — startup e configuração da JVM
 
-**Evidência:** [Dockerfile Java](../../csa-java/Dockerfile#L20) já configura
+**Evidência:** [Dockerfile Java](../autoscalers/csa-java/Dockerfile#L20) já configura
 `-XX:ActiveProcessorCount=1 -XX:TieredStopAtLevel=1`.
-[build.gradle](../../csa-java/build.gradle#L14) já exclui runtimes de autenticação,
+[build.gradle](../autoscalers/csa-java/build.gradle#L14) já exclui runtimes de autenticação,
 protobuf, Prometheus e outros transitivos.
-[BuildProfileTest.java:23](../../csa-java/src/test/java/org/csajava/config/BuildProfileTest.java#L23) registra essas escolhas como expectativas.
+[BuildProfileTest.java:23](../autoscalers/csa-java/src/test/java/org/csajava/config/BuildProfileTest.java#L23) registra essas escolhas como expectativas.
 
 **Hipótese/proposta:** outras configurações de startup/class loading ou empacotamento
 podem beneficiar processos Java curtos. O efeito de novas flags ou de CDS/AOT não foi
@@ -220,8 +220,8 @@ pelo usuário. Não modificar o classpath ou Dockerfile Java nesta branch.
 
 ## P11 — adaptações sequenciais e patches sem mudança efetiva
 
-**Evidência:** [adapt_cpu.py:73](../../csa/scripts/adapt_cpu.py#L73) limita o valor calculado e ainda percorre os Pods
-para resize ([adapt_cpu.py:94](../../csa/scripts/adapt_cpu.py#L94)). Réplicas pode selecionar o valor atual por ceil,
+**Evidência:** [adapt_cpu.py:73](../autoscalers/csa/scripts/adapt_cpu.py#L73) limita o valor calculado e ainda percorre os Pods
+para resize ([adapt_cpu.py:94](../autoscalers/csa/scripts/adapt_cpu.py#L94)). Réplicas pode selecionar o valor atual por ceil,
 como razão 0.95 com poucas réplicas, e ainda executar patch. Java mantém os caminhos.
 O teste de CPU exige parada na primeira falha.
 
@@ -238,7 +238,7 @@ antes de medir a variante otimizada.
 
 ## P12 — caminho de timeout no runtime compartilhado
 
-**Evidência:** [executor shell, linhas 76–86](../../../../custom-self-adapter/internal/execute/shell/shell.go#L76)
+**Evidência:** [executor shell, linhas 76–86](../../custom-self-adapter/internal/execute/shell/shell.go#L76)
 usa um canal não bufferizado. A goroutine envia o retorno de cmd.Wait(); no caminho de
 timeout a função retorna sem receber desse canal. Pela leitura, existe um caminho em
 que a goroutine fica bloqueada no envio após o encerramento do filho.
@@ -259,15 +259,15 @@ runtime em todas as imagens da comparação.
 
 - YAML é carregado nas etapas que precisam dele. Cache entre etapas não sobreviveria ao
   modelo de processos; não foi demonstrada releitura redundante na mesma etapa normal.
-  Fontes: [adapt_base.py:133](../../csa/scripts/adapt_base.py#L133) e [ConfigLoader.java:15](../../csa-java/src/main/java/org/csajava/config/ConfigLoader.java#L15).
+  Fontes: [adapt_base.py:133](../autoscalers/csa/scripts/adapt_base.py#L133) e [ConfigLoader.java:15](../autoscalers/csa-java/src/main/java/org/csajava/config/ConfigLoader.java#L15).
 - O Python chama re.match com a expressão de imagem e volta a interpretar a imagem para
   substituir a tag. Não foi medido o custo nem inspecionado o cache de regex do runtime;
   não afirmar que recompila a expressão a cada chamada.
 - Comparação de quantidades inclui truncamento, limites e arredondamento próprios.
-  Trocar pelo parser nativo de outro SDK pode alterar resultados; ver [paridade](paridade.md).
+  Trocar pelo parser nativo de outro SDK pode alterar resultados; ver [paridade](csa-go/paridade.md).
 - Reduzir timeout não reduz a duração do trabalho; pode apenas interrompê-lo. A política
   aprovada e a diferença entre CSVs de aplicação e custo da estratégia estão em
-  [integração e timeouts](integracao-e-timeouts.md).
+  [integração e timeouts](csa-go/integracao-e-timeouts.md).
 
 ## Situação
 

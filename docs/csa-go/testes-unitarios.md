@@ -6,7 +6,7 @@ compartilhados consumidos pela suíte Go e os testes unitários da implementaç�
 
 ## Corpus compartilhado
 
-O índice [contracts/cases/index.json](../../contracts/cases/index.json) lista 19 casos JSON
+O índice [contracts/cases/index.json](../../autoscalers/contracts/cases/index.json) lista 19 casos JSON
 em `autoscalers/contracts/cases/`. Cada fixture contém `id`, `operation`, `input`, `config`,
 `state` e `expectedResult`. Os resultados registram o comportamento Python de referência
 adotado como contrato Go.

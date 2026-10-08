@@ -61,7 +61,7 @@ kubectl apply -f custom-selfadapter-vq.yaml
 Use `TAG=h`, `hq`, `v` ou `vq`; o build gera o manifesto correspondente. Os quatro perfis
 mantêm as configurações do CSA Python e usam provisoriamente timeout de 1000 ms para métrica
 e 2000 ms para avaliação e adaptações. Os digests publicados e a validação de integração
-estão em [validacao-funcional.md](docs/validacao-funcional.md).
+estão em [validacao-funcional.md](../../docs/csa-go/validacao-funcional.md).
 
 ## Referências para implementação
 

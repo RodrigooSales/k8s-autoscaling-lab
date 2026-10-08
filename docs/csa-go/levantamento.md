@@ -24,9 +24,9 @@ As versões abaixo são **declarações dos arquivos**, não um inventário das 
 | Go | `go.mod`: 1.25.0; mise: 1.25; api/apimachinery/client-go 0.35.3; `go.yaml.in/yaml/v2` 2.4.3 |
 | Laboratório | Guia declara Kubernetes 1.35.3 e Calico 3.31.4; cluster não consultado nesta entrega |
 
-Fontes: [Python](../../csa/requirements.txt), [imagem Python](../../csa/Dockerfile),
-[dependências Java](../../csa-java/build.gradle), [imagem Java](../../csa-java/Dockerfile),
-[wrapper](../../csa-java/gradle/wrapper/gradle-wrapper.properties), [módulo Go](../go.mod).
+Fontes: [Python](../../autoscalers/csa/requirements.txt), [imagem Python](../../autoscalers/csa/Dockerfile),
+[dependências Java](../../autoscalers/csa-java/build.gradle), [imagem Java](../../autoscalers/csa-java/Dockerfile),
+[wrapper](../../autoscalers/csa-java/gradle/wrapper/gradle-wrapper.properties), [módulo Go](../../autoscalers/csa-go/go.mod).
 
 O runtime local está na revisão `68642990d9b81c51c6cad3d60a123db525918469`;
 o operador local, em `08de29d2c82d01790d9c036123f64ca479c798d5`.
@@ -34,7 +34,7 @@ Isso não prova que os mesmos binários estejam nas imagens do cluster.
 
 ## Documentos
 
-- [Melhorias de performance](melhorias-de-performance.md): propostas e condições de aplicação nas três linguagens.
+- [Melhorias de performance](../melhorias-de-performance.md): propostas e condições de aplicação nas três linguagens.
 - [Paridade](paridade.md): comportamento observado e diferenças que não devem ser corrigidas silenciosamente.
 - [Testes unitários](testes-unitarios.md): contratos compartilhados e cobertura unitária da implementação Go.
 - [Integração e timeouts](integracao-e-timeouts.md): contratos do runtime/operador e condições do experimento.
@@ -74,7 +74,7 @@ independentes de cluster, rede externa e Docker.
 As oportunidades de otimização deste levantamento não autorizam modificar o baseline Go
 nem as referências. Eventuais experimentos otimizados ficam para outra branch, com política
 de comparação explícita. Os contratos consumidos pelos testes Go ficam em
-[contracts/cases](../../contracts/cases/index.json); eles definem os resultados esperados
+[contracts/cases](../../autoscalers/contracts/cases/index.json); eles definem os resultados esperados
 pela referência Python.
 
 ## Verificações da entrega 1
