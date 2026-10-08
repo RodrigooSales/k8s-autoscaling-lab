@@ -38,7 +38,7 @@ class CSAGoPlotsTest(unittest.TestCase):
         for configuration in ("csa_go", *(f"csa_go_{profile}" for profile in self.profiles)):
             with self.subTest(configuration=configuration):
                 self.assertEqual(configuration_category(configuration), "CSA Go")
-        self.assertEqual(configuration_category("csa_h"), "CSA")
+        self.assertEqual(configuration_category("csa_h"), "CSA Python")
         self.assertEqual(configuration_category("csa_java_h"), "CSA Java")
 
     def test_adding_go_preserves_reference_bubble_colors(self):
@@ -98,19 +98,19 @@ class CSAGoPlotsTest(unittest.TestCase):
 
     def test_csa_labels_preserve_implementation_and_scenario(self):
         expected = {
-            "csa_h": "CSA H",
+            "csa_h": "CSA Python H",
             "csa_java_h": "CSA Java H",
             "csa_go_h": "CSA Go H",
-            "csa_hq_25": "CSA HQ 25",
+            "csa_hq_25": "CSA Python HQ 25",
             "csa_java_hq_25": "CSA Java HQ 25",
             "csa_go_hq_25": "CSA Go HQ 25",
-            "csa_hq_50": "CSA HQ 50",
+            "csa_hq_50": "CSA Python HQ 50",
             "csa_java_hq_50": "CSA Java HQ 50",
             "csa_go_hq_50": "CSA Go HQ 50",
-            "csa_v": "CSA V",
+            "csa_v": "CSA Python V",
             "csa_java_v": "CSA Java V",
             "csa_go_v": "CSA Go V",
-            "csa_vq": "CSA VQ",
+            "csa_vq": "CSA Python VQ",
             "csa_java_vq": "CSA Java VQ",
             "csa_go_vq": "CSA Go VQ",
         }
