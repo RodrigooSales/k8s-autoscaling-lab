@@ -1,0 +1,42 @@
+{
+  "id": "adapt_replicas_success",
+  "operation": "adapt_replicas",
+  "input": {
+    "resource": {
+      "metadata": {
+        "name": "target",
+        "namespace": "work"
+      }
+    },
+    "evaluation": {
+      "parameters": {
+        "replicas": 5
+      }
+    }
+  },
+  "config": {},
+  "state": {
+    "deployment": {
+      "metadata": {
+        "name": "target",
+        "namespace": "work"
+      },
+      "spec": {
+        "replicas": 2,
+        "template": {
+          "spec": {
+            "containers": [
+              {
+                "name": "znn",
+                "image": "znn:200k"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "expectedResult": {
+    "replicas": 5
+  }
+}

@@ -1,4 +1,44 @@
+import pandas as pd
+
 from plot_helper import MetricSpec
+
+
+CONFIGURATION_ORDER = (
+    "base_1",
+    "base_5",
+    "hpa_std",
+    "hpa_fast",
+    "csa_h",
+    "csa_java_h",
+    "csa_go_h",
+    "csa_hq_25",
+    "csa_java_hq_25",
+    "csa_go_hq_25",
+    "csa_hq_50",
+    "csa_java_hq_50",
+    "csa_go_hq_50",
+    "base_1500",
+    "vpa",
+    "csa_v",
+    "csa_java_v",
+    "csa_go_v",
+    "csa_vq",
+    "csa_java_vq",
+    "csa_go_vq",
+)
+
+
+def sort_configurations(frame: pd.DataFrame) -> pd.DataFrame:
+    order = pd.Categorical(
+        frame["configuration"], categories=CONFIGURATION_ORDER, ordered=True
+    )
+    return (
+        frame.assign(_configuration_order=order)
+        .sort_values(
+            ["_configuration_order", "order", "configuration"], na_position="last"
+        )
+        .drop(columns="_configuration_order")
+    )
 
 CONFIGURATION_LABELS = {
     "base_1": "Base 1 Repl",
@@ -8,10 +48,44 @@ CONFIGURATION_LABELS = {
     "csa_h": "CSA H",
     "csa_hq_25": "CSA HQ 25",
     "csa_hq_50": "CSA HQ 50",
+    "csa_java_h": "CSA Java H",
+    "csa_java_hq_25": "CSA Java HQ 25",
+    "csa_java_hq_50": "CSA Java HQ 50",
+    "csa_go_h": "CSA Go H",
+    "csa_go_hq_25": "CSA Go HQ 25",
+    "csa_go_hq_50": "CSA Go HQ 50",
     "base_1500": "Base 1 Repl 1.5 CPU",
     "vpa": "VPA",
     "csa_v": "CSA V",
     "csa_vq": "CSA VQ",
+    "csa_java_v": "CSA Java V",
+    "csa_java_vq": "CSA Java VQ",
+    "csa_go_v": "CSA Go V",
+    "csa_go_vq": "CSA Go VQ",
+}
+
+CONFIGURATION_COLORS = {
+    "base_1": "#4C78A8",
+    "base_5": "#72B7B2",
+    "base_1500": "#9ECAE9",
+    "hpa_std": "#F58518",
+    "hpa_fast": "#FFBF79",
+    "vpa": "#54A24B",
+    "csa_h": "#E45756",
+    "csa_hq_25": "#D62728",
+    "csa_hq_50": "#FF7F7F",
+    "csa_v": "#B22222",
+    "csa_vq": "#FB6A4A",
+    "csa_java_h": "#7B61FF",
+    "csa_java_hq_25": "#9467BD",
+    "csa_java_hq_50": "#C5B0D5",
+    "csa_java_v": "#6A3D9A",
+    "csa_java_vq": "#B279A2",
+    "csa_go_h": "#00838F",
+    "csa_go_hq_25": "#00ACC1",
+    "csa_go_hq_50": "#4DD0E1",
+    "csa_go_v": "#006064",
+    "csa_go_vq": "#26C6DA",
 }
 
 COMPARISON_METRICS = [
@@ -26,5 +100,3 @@ COMPARISON_METRICS = [
         percent_axis=True,
     ),
 ]
-
-

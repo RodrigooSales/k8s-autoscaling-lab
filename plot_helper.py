@@ -230,7 +230,7 @@ def read_results(data_source, files_root, extra_fields):
     root = Path(files_root)
     all_dfs = []
     for src in data_source:
-        df = pd.read_csv(root / src["file"])
+        df = pd.read_csv(root / src["file"], low_memory=False)
         for field in extra_fields:
             df[field] = src[field]
         all_dfs.append(df)
@@ -255,7 +255,7 @@ def apply_standard_renames(
 
 
 def compute_run_metrics(file_info: pd.Series) -> dict:
-    df = pd.read_csv(file_info["file"])
+    df = pd.read_csv(file_info["file"], low_memory=False)
     df = apply_standard_renames(df)
 
     pods = select_series(df, PODS_SERIES)

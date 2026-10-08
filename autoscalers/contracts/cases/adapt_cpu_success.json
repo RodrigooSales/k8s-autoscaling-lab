@@ -1,0 +1,110 @@
+{
+  "id": "adapt_cpu_success",
+  "operation": "adapt_cpu",
+  "input": {
+    "resource": {
+      "metadata": {
+        "name": "target",
+        "namespace": "work"
+      }
+    },
+    "evaluation": {
+      "parameters": {
+        "cpu_multiplier": 0.9
+      }
+    }
+  },
+  "config": {
+    "maxCPU": 750
+  },
+  "state": {
+    "deployment": {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "target",
+        "namespace": "work",
+        "generation": 1
+      },
+      "spec": {
+        "replicas": 2,
+        "selector": {
+          "matchLabels": {
+            "app": "demo"
+          }
+        },
+        "template": {
+          "spec": {
+            "containers": [
+              {
+                "name": "znn",
+                "image": "registry.k8s.lab/csa-znn:200k",
+                "resources": {
+                  "limits": {
+                    "cpu": "500m"
+                  }
+                }
+              },
+              {
+                "name": "nginx",
+                "image": "nginx:latest",
+                "resources": {
+                  "limits": {
+                    "cpu": "500m"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "observedGeneration": 1,
+        "updatedReplicas": 2,
+        "availableReplicas": 2
+      }
+    },
+    "pods": [
+      {
+        "metadata": {
+          "name": "worker-1",
+          "namespace": "work"
+        },
+        "spec": {
+          "containers": [
+            {
+              "name": "znn",
+              "resources": {
+                "limits": {
+                  "cpu": "600m"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "metadata": {
+          "name": "worker-2",
+          "namespace": "work"
+        },
+        "spec": {
+          "containers": [
+            {
+              "name": "znn",
+              "resources": {
+                "limits": {
+                  "cpu": "700m"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "initialData": "{\"cpu_limit\":500}"
+  },
+  "expectedResult": {
+    "cpu": 630
+  }
+}

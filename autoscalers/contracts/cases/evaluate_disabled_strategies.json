@@ -1,0 +1,33 @@
+{
+  "id": "evaluate_disabled_strategies",
+  "operation": "evaluate",
+  "input": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 5
+      }
+    },
+    "metrics": [
+      {
+        "value": "{\"current_value\":\"990000\",\"target_value\":\"1000\"}"
+      }
+    ]
+  },
+  "config": {
+    "enabled_strategies": [],
+    "minReplicas": 1,
+    "maxReplicas": 5,
+    "maxCPU": 750
+  },
+  "state": {
+    "current_mcpu": 750,
+    "initial_mcpu": 500,
+    "spec_mcpu": 500
+  },
+  "expectedResult": null
+}
+

@@ -1,0 +1,37 @@
+{
+  "id": "evaluate_rate_0949_deadband",
+  "operation": "evaluate",
+  "input": {
+    "resource": {
+      "metadata": {
+        "name": "kube-znn",
+        "namespace": "default"
+      },
+      "spec": {
+        "replicas": 3
+      }
+    },
+    "metrics": [
+      {
+        "value": "{\"current_value\":\"949000\",\"target_value\":\"1000\"}"
+      }
+    ]
+  },
+  "config": {
+    "enabled_strategies": [
+      "adapt_replicas",
+      "adapt_cpu",
+      "adapt_tag"
+    ],
+    "minReplicas": 1,
+    "maxReplicas": 5,
+    "maxCPU": 750
+  },
+  "state": {
+    "current_mcpu": 500,
+    "initial_mcpu": 500,
+    "spec_mcpu": 500
+  },
+  "expectedResult": null
+}
+

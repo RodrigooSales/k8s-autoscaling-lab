@@ -1,0 +1,11 @@
+{
+  "id": "cpu_quantity_large_nanos",
+  "operation": "cpu_quantity",
+  "input": {
+    "cpu": "3000000000000n"
+  },
+  "config": {},
+  "state": {},
+  "expectedResult": 3000000
+}
+

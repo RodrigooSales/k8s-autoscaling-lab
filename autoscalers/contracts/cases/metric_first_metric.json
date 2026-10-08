@@ -1,0 +1,49 @@
+{
+  "id": "metric_first_metric",
+  "operation": "metric",
+  "input": {
+    "resource": {
+      "spec": {
+        "replicas": 2
+      }
+    },
+    "kubernetesMetrics": [
+      {
+        "spec": {
+          "external": {
+            "target": {
+              "value": "1000"
+            }
+          }
+        },
+        "external": {
+          "current": {
+            "value": "950000"
+          }
+        }
+      },
+      {
+        "spec": {
+          "external": {
+            "target": {
+              "value": "2000"
+            }
+          }
+        },
+        "external": {
+          "current": {
+            "value": "999999"
+          }
+        }
+      }
+    ]
+  },
+  "config": {},
+  "state": {},
+  "expectedResult": {
+    "current_replicas": 2,
+    "target_value": "1000",
+    "current_value": "950000"
+  }
+}
+

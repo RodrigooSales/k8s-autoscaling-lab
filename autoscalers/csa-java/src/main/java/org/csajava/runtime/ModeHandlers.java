@@ -1,0 +1,48 @@
+package org.csajava.runtime;
+
+import org.csajava.cli.Mode;
+import org.csajava.io.JsonOut;
+import org.csajava.runtime.adapt.cpu.AdaptCpuRuntime;
+import org.csajava.runtime.adapt.replicas.AdaptReplicasRuntime;
+import org.csajava.runtime.adapt.tag.AdaptTagRuntime;
+import org.csajava.runtime.evaluate.EvaluateRuntime;
+import org.csajava.runtime.metric.MetricRuntime;
+
+public final class ModeHandlers {
+    private ModeHandlers() {
+    }
+
+    public static ModeHandler forMode(Mode mode) {
+        if (mode == null) {
+            return null;
+        }
+
+        return switch (mode) {
+            case METRIC -> context -> JsonOut.write(MetricRuntime.evaluate(context));
+            case EVALUATE -> context -> {
+                Object result = EvaluateRuntime.evaluate(context);
+                if (result != null) {
+                    JsonOut.write(result);
+                }
+            };
+            case ADAPT_REPLICAS -> context -> {
+                Object result = AdaptReplicasRuntime.evaluate(context);
+                if (result != null) {
+                    JsonOut.write(result);
+                }
+            };
+            case ADAPT_TAG -> context -> {
+                Object result = AdaptTagRuntime.evaluate(context);
+                if (result != null) {
+                    JsonOut.write(result);
+                }
+            };
+            case ADAPT_CPU -> context -> {
+                Object result = AdaptCpuRuntime.evaluate(context);
+                if (result != null) {
+                    JsonOut.write(result);
+                }
+            };
+        };
+    }
+}

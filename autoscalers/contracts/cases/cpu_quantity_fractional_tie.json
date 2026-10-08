@@ -1,0 +1,11 @@
+{
+  "id": "cpu_quantity_fractional_tie",
+  "operation": "cpu_quantity",
+  "input": {
+    "cpu": "0.0025"
+  },
+  "config": {},
+  "state": {},
+  "expectedResult": 2
+}
+

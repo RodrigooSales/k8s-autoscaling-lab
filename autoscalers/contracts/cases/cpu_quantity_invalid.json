@@ -1,0 +1,11 @@
+{
+  "id": "cpu_quantity_invalid",
+  "operation": "cpu_quantity",
+  "input": {
+    "cpu": "invalid"
+  },
+  "config": {},
+  "state": {},
+  "expectedResult": null
+}
+
