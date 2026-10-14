@@ -192,8 +192,6 @@ Executados a partir da raiz do worktree `.worktrees/csa-python-http`:
 git diff --check
 ```
 
-O build local disponível para validação posterior é `docker build --build-arg PROFILE=h -t csa-python-http:h autoscalers/csa-python-http`, executado da raiz do repositório. Não foi executado nesta atividade, conforme escopo. Também não foram executados testes, publicação de imagem, aplicação dos manifests, Vagrant ou validação de cluster. A revisão estática confirmou que os manifests usam somente os campos declarados no schema compartilhado e que a regra RBAC se limita à métrica consultada.
-
 ## Atividade 5: schema próprio dos profiles HTTP
 
 ### Decisões
@@ -262,3 +260,53 @@ sed -n '1,180p' ../custom-self-adapter/internal/selfadapter/selfadapter.go
 sed -n '1,180p' ../custom-self-adapter/internal/evaluatecalc/evaluatecalc.go
 git diff --check
 ```
+
+## Retorno HTTP sem decisão
+
+### Decisão e comportamento
+
+- `/evaluate` retorna `200` com JSON quando seleciona uma estratégia. Sem estratégia aplicável, retorna `204 No Content` sem corpo, como o stdout vazio das versões shell. Isso evita representar ausência de adaptação como `{}`.
+- Somente `evaluate.http.successCodes` mudou para `[200, 204]` nos profiles `h`, `hq`, `v` e `vq`. `metric` e `adapt` continuam aceitando apenas `200`.
+- O operador e o runtime externo não foram alterados. Nenhuma estratégia noop foi criada.
+
+### Testes e smoke test no cluster
+
+O teste de não decisão falhou com o contrato anterior, passou após a mudança e voltou a falhar quando a produção foi temporariamente revertida. A suíte terminou com `17 passed`:
+
+```sh
+.venv/bin/pytest autoscalers/csa-python-http/tests -q
+../../.venv/bin/python -c 'import yaml; from pathlib import Path; profiles=[yaml.safe_load(path.read_text()) for path in Path("autoscalers/csa-python-http/profiles").glob("*.yaml")]; assert len(profiles)==4 and all(profile["evaluate"]["http"]["successCodes"] == [200, 204] for profile in profiles)'
+```
+
+No cluster `kubernetes-admin@kubernetes`, foram publicados os três apps com tags temporárias `smoke-204-20261014`. No namespace `csa-http-204-smoke-20261014`, um Deployment e Service por API permitiram chamar `/evaluate` via port-forward. Nas três APIs, `940000`/alvo `1000` retornou `204` com corpo vazio; `950000` retornou `200` com `{"strategy":"adapt_replicas","parameters":{"replicas":2}}`. O namespace foi removido ao final. As tags temporárias seguem disponíveis no registry.
+
+Cada build abaixo foi executado no diretório da implementação correspondente em seu worktree. Comandos da publicação e do ciclo temporário no cluster:
+
+```sh
+docker build --platform linux/amd64 -t registry.k8s.lab/csa-python-http:smoke-204-20261014 --build-arg PROFILE=h -f Dockerfile .
+docker build --platform linux/amd64 -t registry.k8s.lab/csa-znn-go-http:smoke-204-20261014 --build-arg TAG=h -f Dockerfile .
+docker build --platform linux/amd64 -t registry.k8s.lab/csa-znn-java-http:smoke-204-20261014 --build-arg PROFILE=h -f Dockerfile .
+docker push registry.k8s.lab/csa-python-http:smoke-204-20261014
+docker push registry.k8s.lab/csa-znn-go-http:smoke-204-20261014
+docker push registry.k8s.lab/csa-znn-java-http:smoke-204-20261014
+kubectl create namespace csa-http-204-smoke-20261014
+kubectl create deployment csa-python-http --image=registry.k8s.lab/csa-python-http:smoke-204-20261014 --replicas=1 --port=8080 -n csa-http-204-smoke-20261014
+kubectl expose deployment csa-python-http --port=8080 --target-port=8080 -n csa-http-204-smoke-20261014
+kubectl create deployment csa-go-http --image=registry.k8s.lab/csa-znn-go-http:smoke-204-20261014 --replicas=1 --port=8080 -n csa-http-204-smoke-20261014
+kubectl expose deployment csa-go-http --port=8080 --target-port=8080 -n csa-http-204-smoke-20261014
+kubectl create deployment csa-java-http --image=registry.k8s.lab/csa-znn-java-http:smoke-204-20261014 --replicas=1 --port=8080 -n csa-http-204-smoke-20261014
+kubectl expose deployment csa-java-http --port=8080 --target-port=8080 -n csa-http-204-smoke-20261014
+kubectl rollout status deployment/csa-python-http -n csa-http-204-smoke-20261014 --timeout=180s
+kubectl rollout status deployment/csa-go-http -n csa-http-204-smoke-20261014 --timeout=180s
+kubectl rollout status deployment/csa-java-http -n csa-http-204-smoke-20261014 --timeout=180s
+kubectl port-forward service/csa-python-http 18080:8080 -n csa-http-204-smoke-20261014
+kubectl port-forward service/csa-go-http 18080:8080 -n csa-http-204-smoke-20261014
+kubectl port-forward service/csa-java-http 18080:8080 -n csa-http-204-smoke-20261014
+curl -sS -i -X POST http://127.0.0.1:18080/evaluate -H 'Content-Type: application/json' --data-raw '{"resource":{"spec":{"replicas":2}},"metrics":[{"value":"{\"current_value\":\"940000\",\"target_value\":\"1000\"}"}]}'
+curl -sS -i -X POST http://127.0.0.1:18080/evaluate -H 'Content-Type: application/json' --data-raw '{"resource":{"spec":{"replicas":2}},"metrics":[{"value":"{\"current_value\":\"950000\",\"target_value\":\"1000\"}"}]}'
+kubectl delete namespace csa-http-204-smoke-20261014 --wait=true --timeout=120s
+```
+
+O teste cobriu os Services das APIs no cluster. Não executou o ciclo completo do operador/runtime nem alterou o Deployment de pesquisa. Embora o executor HTTP reconheça `204` como sucesso, o runtime genérico ainda tenta interpretar o corpo vazio como JSON e retorna erro antes de chamar a adaptação. O stdout vazio do shell segue o mesmo caminho. Evitar esse erro e tratar a ausência como no-op bem-sucedido exige uma mudança no runtime externo, que permaneceu sem alterações.
+
+O build local disponível para validação posterior é `docker build --build-arg PROFILE=h -t csa-python-http:h autoscalers/csa-python-http`, executado da raiz do repositório. Não foi executado nesta atividade, conforme escopo. Também não foram executados testes, publicação de imagem, aplicação dos manifests, Vagrant ou validação de cluster. A revisão estática confirmou que os manifests usam somente os campos declarados no schema compartilhado e que a regra RBAC se limita à métrica consultada.

@@ -16,7 +16,7 @@ evaluate:
     url: http://csa-python-http-api:8080/evaluate
     headers:
       Content-Type: application/json
-    successCodes: [200]
+    successCodes: [200, 204]
     parameterMode: body
 adapt:
   adapt_replicas:

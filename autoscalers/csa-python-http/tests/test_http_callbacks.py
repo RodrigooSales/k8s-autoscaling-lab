@@ -51,13 +51,14 @@ def test_evaluate_callback_returns_runtime_evaluation_contract(monkeypatch):
 
     result = _endpoint("/evaluate")(spec)
 
-    assert result == {
+    assert result.status_code == 200
+    assert json.loads(result.body) == {
         "strategy": "adapt_replicas",
         "parameters": {"replicas": 2},
     }
 
 
-def test_evaluate_returns_empty_object_when_no_adaptation_is_selected(monkeypatch):
+def test_evaluate_returns_no_content_when_no_adaptation_is_selected(monkeypatch):
     monkeypatch.setattr(
         main,
         "load_profile",
@@ -72,7 +73,8 @@ def test_evaluate_returns_empty_object_when_no_adaptation_is_selected(monkeypatc
 
     result = _endpoint("/evaluate")(spec)
 
-    assert result == {}
+    assert result.status_code == 204
+    assert result.body == b""
 
 
 def test_replica_callback_applies_the_evaluated_replica_count(monkeypatch):

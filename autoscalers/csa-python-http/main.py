@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import JSONResponse
 
 import adapt_replicas
 import metrics
@@ -23,10 +24,12 @@ def metric_callback(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.post("/evaluate")
-def evaluate_callback(spec: dict[str, Any]) -> dict[str, Any]:
+def evaluate_callback(spec: dict[str, Any]) -> Response:
     snapshot = metrics.snapshot_from_evaluation(spec)
     decision = evaluate(snapshot, load_profile(), current_mcpu=0, initial_mcpu=0)
-    return {} if decision is None else decision
+    if decision is None:
+        return Response(status_code=204)
+    return JSONResponse(content=decision)
 
 
 @app.post("/adapt/replicas")
