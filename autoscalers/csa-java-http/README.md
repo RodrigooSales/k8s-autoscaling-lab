@@ -2,7 +2,7 @@
 
 Implementação Java dos callbacks HTTP do Custom Self-Adapter. O ciclo usa dois Pods: o runtime genérico coleta a métrica e executa `metric`, `evaluate` e `adapt`; a aplicação Spring Boot atende os callbacks pelo Service `csa-java-http-api`.
 
-`CallbackController` publica health, coleta, avaliação e adaptação de réplicas. `MetricCollectionService` interpreta a entrada enviada pelo runtime, `EvaluationService` aplica os limiares existentes e `ReplicaAdaptationService` altera somente `Deployment.spec.replicas`. Quando não há decisão, `/evaluate` responde `{}`; o runtime genérico atual pode registrar erro ao tentar adaptar uma avaliação sem estratégia. Essa resposta mantém o contrato da avaliação shell. O runtime externo não foi alterado.
+`CallbackController` publica health, coleta, avaliação e adaptação de réplicas. `MetricCollectionService` interpreta a entrada enviada pelo runtime, `EvaluationService` aplica os limiares existentes e `ReplicaAdaptationService` altera somente `Deployment.spec.replicas`. Quando não há decisão, `/evaluate` responde `204 No Content` sem corpo. O runtime tenta interpretar essa saída vazia como JSON e falha; o callback shell também produz saída vazia nesse caso e falha no mesmo parser. Essa equivalência foi reproduzida com o evaluator do runtime, que não foi alterado.
 
 ## Profiles e cenários
 
