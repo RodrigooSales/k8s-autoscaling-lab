@@ -59,7 +59,7 @@ public final class CallbackController {
     }
 
     @PostMapping("/evaluate")
-    public Map<String, Object> evaluate(@RequestBody JsonNode spec) {
+    public ResponseEntity<Map<String, Object>> evaluate(@RequestBody JsonNode spec) {
         MetricSnapshot snapshot = metrics.snapshotFromEvaluation(spec);
         EvaluationService.Decision decision = evaluation.evaluate(new EvaluationService.Input(
                 snapshot.currentReplicas(),
@@ -72,9 +72,9 @@ public final class CallbackController {
                 maxCpu,
                 enabledStrategies));
         if (decision == null) {
-            return Map.of();
+            return ResponseEntity.noContent().build();
         }
-        return Map.of("strategy", decision.strategy(), "parameters", decision.parameters());
+        return ResponseEntity.ok(Map.of("strategy", decision.strategy(), "parameters", decision.parameters()));
     }
 
     @PostMapping("/adapt/replicas")

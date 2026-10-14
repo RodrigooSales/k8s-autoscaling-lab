@@ -35,7 +35,7 @@ class CallbackControllerTest {
     }
 
     @Test
-    void evaluationReturnsDecisionOrEmptyObject() throws Exception {
+    void evaluationReturnsDecisionOrNoContent() throws Exception {
         MockMvc mockMvc = mockMvc(mock(ReplicaAdaptationService.class));
 
         mockMvc.perform(post("/evaluate")
@@ -48,8 +48,8 @@ class CallbackControllerTest {
         mockMvc.perform(post("/evaluate")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(evaluationPayload("940000")))
-                .andExpect(status().isOk())
-                .andExpect(content().json("{}"));
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
     }
 
     @Test
