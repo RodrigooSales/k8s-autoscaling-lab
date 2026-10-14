@@ -10,9 +10,11 @@ Implementação HTTP em Python. `main.py` inicializa a aplicação FastAPI e exp
 
 ## Empacotamento para testes futuros
 
-`profiles/{h,hq,v,vq}.yaml` mantém os limites e a métrica do laboratório, variando `enabled_strategies` conforme os perfis CSA existentes. O `Dockerfile` seleciona um deles pelo argumento `PROFILE` e copia o resultado para `/config.yaml`. A aplicação ainda não carrega esse arquivo nem executa o ciclo periódico; somente o perfil H referencia uma adaptação implementada até agora.
+`profiles/{h,hq,v,vq}.yaml` usa a configuração da aplicação HTTP independente: intervalo, limites de réplicas/CPU, métrica (`name`, `selector`, `targetValue`) e `enabled_strategies`. Os perfis variam somente as estratégias conforme o cenário. Eles não incluem callbacks `metric`, `evaluate` ou `adapt` do executor antigo nem campos operacionais como `kubernetesMetricSpecs`, `requireKubernetesMetrics` e `logVerbosity`.
 
-Os manifests `custom-selfadapter-{h,hq,v,vq}.yaml` criam o Pod da implementação para testes futuros. Eles usam apenas o schema `CustomSelfAdapter` já publicado pelo operador, definem as configurações de ambiente da coleta e concedem leitura da métrica externa `znn_latency_ms_p95`. O operador já concede acesso ao Deployment de destino. O endpoint `/health` é a única rota disponível neste momento; os manifests não tornam a adaptação automática funcional.
+O operador consome o recurso `CustomSelfAdapter` para provisionar o Pod e o RBAC. Esse processo não cria um Service; a aplicação HTTP independente será o runtime do ciclo e não usa o executor genérico antigo. Os manifests `custom-selfadapter-{h,hq,v,vq}.yaml` configuram o Pod e as permissões necessárias para testes futuros.
+
+O `Dockerfile` seleciona um profile pelo argumento `PROFILE` e o copia para `/config.yaml`. A aplicação ainda não carrega `/config.yaml` nem executa o loop periódico. `GET /health` continua sendo a única rota; somente a adaptação de réplicas está implementada, e ainda não está ligada a uma rota ou ciclo HTTP.
 
 Para construir uma imagem local com um perfil, a partir da raiz do repositório:
 

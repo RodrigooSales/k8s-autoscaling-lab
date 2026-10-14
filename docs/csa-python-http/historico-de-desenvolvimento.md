@@ -193,3 +193,23 @@ git diff --check
 ```
 
 O build local disponível para validação posterior é `docker build --build-arg PROFILE=h -t csa-python-http:h autoscalers/csa-python-http`, executado da raiz do repositório. Não foi executado nesta atividade, conforme escopo. Também não foram executados testes, publicação de imagem, aplicação dos manifests, Vagrant ou validação de cluster. A revisão estática confirmou que os manifests usam somente os campos declarados no schema compartilhado e que a regra RBAC se limita à métrica consultada.
+
+## Atividade 5: schema próprio dos profiles HTTP
+
+### Decisões
+
+- Os quatro profiles agora usam o mesmo schema próprio da aplicação independente: `interval`, `minReplicas`, `maxReplicas`, `maxCPU`, `metric.name`, `metric.selector`, `metric.targetValue` e `enabled_strategies`. Os valores atuais são intervalo de 5000 ms, réplicas de 1 a 5, CPU máxima de 750 mCPU e métrica `znn_latency_ms_p95` com seletor vazio e alvo 1000.
+- H habilita `adapt_replicas`; HQ habilita réplicas e tag; V habilita CPU; VQ habilita CPU e tag. Somente a função de adaptação de réplicas existe nesta etapa. CPU e tag não estão implementadas.
+- Foram removidos `kubernetesMetricSpecs`, `requireKubernetesMetrics` e `logVerbosity`, campos ligados ao runtime anterior. A aplicação independente será responsável por seu ciclo e o operador continua responsável por criar o Pod/RBAC. Não foram adicionados callbacks `metric`, `evaluate` ou `adapt` nem um recurso Service.
+- O `Dockerfile` ainda copia o profile para `/config.yaml`, mas a aplicação atual não carrega esse arquivo e ainda não executa um loop. Por isso, `metrics.py` continua usando `CSA_NAMESPACE`, `CSA_DEPLOYMENT_NAME`, `CSA_METRIC_NAME`, `CSA_METRIC_SELECTOR` e `CSA_TARGET_VALUE` do ambiente. O operador injeta o namespace; os manifests mantêm configuráveis o Deployment e a métrica. O campo `metric` do profile só passará a controlar a coleta quando o carregador for implementado.
+
+### Comandos usados e validação
+
+Executados a partir da raiz do worktree `.worktrees/csa-python-http-profiles`:
+
+```sh
+../../.venv/bin/python -c 'from pathlib import Path; import yaml; files = sorted(Path("autoscalers/csa-python-http/profiles").glob("*.yaml")); [yaml.safe_load(path.read_text()) for path in files]; print(f"valid profiles: {len(files)}")'
+git diff --check
+```
+
+Os quatro profiles foram lidos como YAML válido e `git diff --check` não apontou problemas de whitespace. Não foram executados testes nem build. O comando de build para uso futuro permanece `docker build --build-arg PROFILE=h -t csa-python-http:h autoscalers/csa-python-http`; ele não foi executado nem publicou imagem.
