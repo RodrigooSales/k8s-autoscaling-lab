@@ -1,32 +1,35 @@
 # CSA Python HTTP
 
-Implementação Python dos callbacks HTTP do Custom Self-Adapter. O ciclo tem dois Pods: o runtime genérico coleta a métrica e executa `metric`, `evaluate` e `adapt`; o Pod desta aplicação expõe os callbacks pelo Service `csa-python-http-api`.
+Implementação Python dos callbacks HTTP do Custom Self-Adapter. O ciclo usa dois Pods: o runtime genérico coleta a métrica e executa `metric`, `evaluate` e `adapt`; a aplicação Python atende os callbacks pelo Service `csa-python-http-api`.
 
-`main.py` expõe `GET /health`, `POST /metric`, `POST /evaluate` e `POST /adapt/replicas`. A métrica já vem no payload enviado pelo runtime; `metrics.py` normaliza esse payload sem consultar o Metrics Server. `evaluate.py` mantém os limiares e limites da implementação Python tradicional. Quando não há decisão, `/evaluate` responde `{}`. O runtime ignora uma avaliação sem estratégia e encerra o ciclo sem executar `Adapt`.
+`main.py` expõe `GET /health`, `POST /metric`, `POST /evaluate` e `POST /adapt/replicas`. `metrics.py` interpreta a entrada enviada pelo runtime, `evaluate.py` aplica os limiares existentes e `adapt_replicas.py` altera somente `Deployment.spec.replicas`. Quando não há decisão, `/evaluate` responde `{}`; o runtime genérico atual pode registrar erro ao tentar adaptar uma avaliação sem estratégia. Essa resposta mantém o contrato da avaliação shell. O runtime externo não foi alterado.
 
-`adapt_replicas.py` aplica somente `Deployment.spec.replicas`. Neste estágio, os quatro profiles habilitam somente `adapt_replicas`; CPU e tag não estão implementadas nesta versão HTTP.
+## Profiles e cenários
 
-## Configuração e execução no cluster
+Cada arquivo em `profiles/` preserva os blocos `metric`, `evaluate` e `adapt` usados pelo runtime shell, com os executores HTTP apontando para o Service. As estratégias habilitadas seguem os cenários Python tradicionais:
 
-`profiles/{h,hq,v,vq}.yaml` preserva o schema de callbacks do runtime genérico, com URLs HTTP apontando para o Service e `kubernetesMetricSpecs` para a coleta feita pelo runtime. Cada manifest `custom-selfadapter-<perfil>.yaml` contém dois recursos `CustomSelfAdapter`: o servidor Python e o runtime genérico com o profile montado em `/config.yaml`. `service.yaml` seleciona o Pod Python pelas labels que o operador aplica ao recurso.
+| Profile | Estratégias habilitadas |
+| --- | --- |
+| `h` | `adapt_replicas` |
+| `hq` | `adapt_replicas`, `adapt_tag` |
+| `v` | `adapt_cpu` |
+| `vq` | `adapt_cpu`, `adapt_tag` |
 
-Antes de aplicar um perfil, publique a imagem do runtime com suporte a avaliação vazia como `registry.k8s.lab/custom-self-adapter:alpine-empty-evaluation`, crie o ConfigMap e aplique o Service e o manifest:
+Só o callback de réplicas está implementado nesta versão. Portanto `h` é o único profile cujas estratégias selecionadas têm uma rota correspondente; `hq`, `v` e `vq` documentam a configuração de cenário e dependem dos adaptadores de tag/CPU futuros.
+
+## Imagens e cluster
+
+Cada manifest `custom-selfadapter-<profile>.yaml` contém dois recursos `CustomSelfAdapter`: a API e o runtime. `runtime.Dockerfile` deriva da imagem genérica existente e embute o profile selecionado em `/config.yaml`. Assim, não há ConfigMap. `service.yaml` é o Service explícito que aponta para os Pods da API; o operador continua responsável pelos Pods e pelo RBAC de cada recurso.
+
+Exemplo de build e publicação do profile `h`, executado na raiz do repositório:
 
 ```sh
-kubectl create configmap csa-python-http-runtime-config-h \
-  --from-file=config.yaml=autoscalers/csa-python-http/profiles/h.yaml \
-  --dry-run=client -o yaml | kubectl apply -f -
+docker build --build-arg PROFILE=h -t registry.k8s.lab/csa-python-http:h autoscalers/csa-python-http
+docker build -f autoscalers/csa-python-http/runtime.Dockerfile --build-arg PROFILE=h -t registry.k8s.lab/csa-python-http-runtime:h autoscalers/csa-python-http
+docker push registry.k8s.lab/csa-python-http:h
+docker push registry.k8s.lab/csa-python-http-runtime:h
 kubectl apply -f autoscalers/csa-python-http/service.yaml
 kubectl apply -f autoscalers/csa-python-http/custom-selfadapter-h.yaml
 ```
 
-Para `hq`, `v` ou `vq`, use o sufixo correspondente no ConfigMap e no manifest. Os recursos ainda precisam das imagens de aplicação publicadas no registry usado pelo cluster.
-
-## Desenvolvimento local
-
-```sh
-../../.venv/bin/pytest autoscalers/csa-python-http/tests -q
-docker build --build-arg PROFILE=h -t csa-python-http:h autoscalers/csa-python-http
-```
-
-O Dockerfile inclui o profile selecionado na imagem Python. O histórico de decisões, comandos e validações está em [docs/csa-python-http/historico-de-desenvolvimento.md](../../docs/csa-python-http/historico-de-desenvolvimento.md).
+Para outro cenário, use o mesmo sufixo no argumento `PROFILE`, nas duas imagens e no manifest. O runtime base `registry.k8s.lab/custom-self-adapter:alpine-latest` está fixado pelo digest em `runtime.Dockerfile` e precisa estar disponível no registry. O histórico de decisões, comandos e validações está em [docs/csa-python-http/historico-de-desenvolvimento.md](../../docs/csa-python-http/historico-de-desenvolvimento.md).

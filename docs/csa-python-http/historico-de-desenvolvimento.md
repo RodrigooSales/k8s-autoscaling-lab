@@ -236,3 +236,29 @@ git diff --check
 ```
 
 Resultado: `17 passed`; 10 YAMLs foram parseados. No worktree local `../custom-self-adapter-empty-evaluation`, `go test ./internal/evaluatecalc ./internal/adapting -count=1` passou após demonstrar RED e GREEN para stdout vazio e `{}`. `go test ./...` também passou no runtime. Não foram publicados containers nem aplicados recursos Kubernetes.
+
+## Correção do fluxo HTTP e dos profiles por cenário
+
+### Decisões
+
+- Os profiles preservam o schema do runtime usado pelas implementações shell: `metric`, `evaluate`, `adapt`, `interval`, limites, `kubernetesMetricSpecs`, `enabled_strategies`, `requireKubernetesMetrics` e `logVerbosity`. Os callbacks de métrica, avaliação e adaptação apontam para o Service Python.
+- As estratégias habilitadas voltaram a variar por cenário: `h` usa réplicas; `hq` usa réplicas e tag; `v` usa CPU; `vq` usa CPU e tag. Os blocos de callback permanecem declarados como nas configurações shell.
+- Runtime e API continuam em Pods separados, cada um criado por um `CustomSelfAdapter`. O Service da API continua sendo um manifesto explícito; o operador não foi alterado.
+- Para não criar ConfigMap, `runtime.Dockerfile` deriva da imagem genérica existente e copia o profile de cenário para `/config.yaml`. Cada imagem recebe uma tag própria `csa-python-http-runtime:<profile>`.
+- Esta implementação ainda tem somente o callback de réplicas. `hq`, `v` e `vq` refletem corretamente a configuração tradicional, mas dependem dos callbacks CPU/tag antes de serem executados. O runtime genérico atual também pode registrar erro quando recebe uma avaliação sem estratégia; nenhum código do runtime externo foi alterado.
+- Os manifests removem os mounts e volumes de ConfigMap. A API continua empacotando o mesmo profile na própria imagem para avaliar segundo o cenário escolhido.
+
+### Inspeção, comandos e validação
+
+Foram comparados os quatro profiles HTTP com `autoscalers/csa-go/profiles/` e `autoscalers/csa-java/profiles/`, e lidos os executores HTTP, a avaliação e o fluxo de adaptação do runtime externo em modo somente leitura. Também foram inspecionados os manifests e os Dockerfiles locais. Nenhum build, teste, push de imagem, alteração no runtime externo ou comando no cluster foi executado nesta correção.
+
+Comandos de referência desta revisão:
+
+```sh
+rg --files autoscalers/csa-python-http docs/csa-python-http
+cat autoscalers/csa-python-http/profiles/{h,hq,v,vq}.yaml
+cat autoscalers/csa-go/profiles/{h,hq,v,vq}.yaml
+sed -n '1,180p' ../custom-self-adapter/internal/selfadapter/selfadapter.go
+sed -n '1,180p' ../custom-self-adapter/internal/evaluatecalc/evaluatecalc.go
+git diff --check
+```
