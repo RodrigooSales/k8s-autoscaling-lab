@@ -1,159 +1,114 @@
 package org.csajavahttp.metric;
 
 import io.kubernetes.client.custom.Quantity;
-import io.kubernetes.client.openapi.ApiClient;
-import io.kubernetes.client.openapi.ApiException;
-import io.kubernetes.client.openapi.apis.AppsV1Api;
-import io.kubernetes.client.openapi.apis.CustomObjectsApi;
-import io.kubernetes.client.openapi.models.V1Deployment;
-import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.math.RoundingMode;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
-@Lazy
-public class MetricCollectionService {
-    private static final String EXTERNAL_METRICS_GROUP = "external.metrics.k8s.io";
-    private static final String EXTERNAL_METRICS_VERSION = "v1beta1";
-    private static final BigDecimal MILLI = BigDecimal.valueOf(1000);
+public final class MetricCollectionService {
+    private static final ObjectMapper JSON = new ObjectMapper();
 
-    private final String namespace;
-    private final String deploymentName;
-    private final String metricName;
-    private final String metricSelector;
-    private final String targetValue;
-    private final AppsV1Api deploymentApi;
-    private final CustomObjectsApi customObjects;
+    public MetricSnapshot collect(JsonNode spec) {
+        JsonNode resource = objectField(spec, "resource");
+        int replicas = replicaCount(objectField(resource, "spec"));
+        JsonNode metrics = spec.path("kubernetesMetrics");
+        if (!metrics.isArray() || metrics.isEmpty()) {
+            throw new MetricCollectionException("kubernetesMetrics must contain at least one metric");
+        }
 
-    @Autowired
-    public MetricCollectionService(
-            ApiClient client,
-            @Value("${csa.namespace}") String namespace,
-            @Value("${csa.deployment-name}") String deploymentName,
-            @Value("${csa.metric-name}") String metricName,
-            @Value("${csa.metric-selector:}") String metricSelector,
-            @Value("${csa.target-value}") String targetValue) {
-        this(namespace, deploymentName, metricName, metricSelector, targetValue, client);
+        JsonNode metric = metrics.get(0);
+        JsonNode target = valueField(
+                objectField(objectField(objectField(metric, "spec"), "external"), "target"), "value");
+        JsonNode current = valueField(
+                objectField(objectField(metric, "external"), "current"), "value");
+        return snapshot(replicas, current, target);
     }
 
-    MetricCollectionService(
-            String namespace,
-            String deploymentName,
-            String metricName,
-            String metricSelector,
-            String targetValue,
-            ApiClient client) {
-        this.namespace = required(namespace, "namespace");
-        this.deploymentName = required(deploymentName, "deployment name");
-        this.metricName = required(metricName, "metric name");
-        this.metricSelector = Objects.requireNonNullElse(metricSelector, "");
-        this.targetValue = required(targetValue, "target value");
-        this.deploymentApi = new AppsV1Api(client);
-        this.customObjects = new CustomObjectsApi(client);
-    }
+    public MetricSnapshot snapshotFromEvaluation(JsonNode spec) {
+        JsonNode resource = objectField(spec, "resource");
+        int replicas = replicaCount(objectField(resource, "spec"));
+        JsonNode metrics = spec.path("metrics");
+        if (!metrics.isArray() || metrics.isEmpty()) {
+            throw new MetricCollectionException("metrics must contain at least one metric");
+        }
+        JsonNode metric = objectValue(metrics.get(0), "metrics[0]");
+        JsonNode value = valueField(metric, "value");
+        if (!value.isTextual()) {
+            throw new MetricCollectionException("metrics[0].value must contain JSON text");
+        }
 
-    public MetricSnapshot collect() {
-        BigInteger targetMetricValue = readTargetMetricValue();
-        BigInteger currentValue = readExternalMetricValue();
-        int replicas = readDeploymentReplicas();
-        return new MetricSnapshot(replicas, currentValue, targetMetricValue);
-    }
-
-    private BigInteger readTargetMetricValue() {
+        JsonNode payload;
         try {
-            return quantityValue(targetValue, "configured target").toBigIntegerExact();
-        } catch (ArithmeticException error) {
-            throw new MetricCollectionException("Configured target metric must be an integer", error);
+            payload = JSON.readTree(value.asText());
+        } catch (Exception error) {
+            throw new MetricCollectionException("metrics[0].value contains invalid JSON", error);
         }
+        return snapshot(
+                replicas,
+                valueField(payload, "current_value"),
+                valueField(payload, "target_value"));
     }
 
-    private int readDeploymentReplicas() {
-        V1Deployment deployment;
-        try {
-            deployment = deploymentApi.readNamespacedDeployment(deploymentName, namespace).execute();
-        } catch (ApiException | IllegalArgumentException error) {
-            throw new MetricCollectionException(
-                    "Failed to read Deployment " + namespace + "/" + deploymentName, error);
-        }
-
-        if (deployment == null || deployment.getSpec() == null || deployment.getSpec().getReplicas() == null) {
-            throw new MetricCollectionException(
-                    "Deployment " + namespace + "/" + deploymentName
-                            + " has no configured replica count");
-        }
-        return deployment.getSpec().getReplicas();
+    private static MetricSnapshot snapshot(int replicas, JsonNode current, JsonNode target) {
+        String currentValue = quantityText(current, "current metric value");
+        String targetValue = quantityText(target, "target metric value");
+        return new MetricSnapshot(
+                replicas,
+                integerQuantity(currentValue, "current metric value"),
+                integerQuantity(targetValue, "target metric value"),
+                currentValue,
+                targetValue);
     }
 
-    private BigInteger readExternalMetricValue() {
-        Object response;
-        try {
-            var request = customObjects.listNamespacedCustomObject(
-                    EXTERNAL_METRICS_GROUP,
-                    EXTERNAL_METRICS_VERSION,
-                    namespace,
-                    metricName);
-            if (!metricSelector.isBlank()) {
-                request.labelSelector(metricSelector);
-            }
-            response = request.execute();
-        } catch (ApiException | IllegalArgumentException error) {
-            throw new MetricCollectionException(
-                    "Failed to read external metric " + namespace + "/" + metricName, error);
+    private static int replicaCount(JsonNode resourceSpec) {
+        JsonNode replicas = valueField(resourceSpec, "replicas");
+        if (!replicas.canConvertToInt() || replicas.asInt() < 0) {
+            throw new MetricCollectionException("resource.spec.replicas must be a non-negative integer");
         }
-
-        if (!(response instanceof Map<?, ?> metricList) || !(metricList.get("items") instanceof List<?> items)) {
-            throw new MetricCollectionException("External metric response has no items list");
-        }
-        if (items.isEmpty()) {
-            throw new MetricCollectionException(
-                    "External metric " + namespace + "/" + metricName + " has no values");
-        }
-
-        BigInteger total = BigInteger.ZERO;
-        for (Object item : items) {
-            if (!(item instanceof Map<?, ?> metric) || !metric.containsKey("value")) {
-                throw new MetricCollectionException("External metric response item has no value");
-            }
-            total = total.add(milliValue(metric.get("value")));
-        }
-        return total;
+        return replicas.asInt();
     }
 
-    private static BigInteger milliValue(Object value) {
-        BigDecimal scaled = quantityValue(value, "external metric value")
-                .multiply(MILLI)
-                .setScale(0, RoundingMode.CEILING);
-        return scaled.toBigIntegerExact();
+    private static JsonNode objectField(JsonNode object, String field) {
+        JsonNode value = valueField(object, field);
+        return objectValue(value, field);
     }
 
-    private static BigDecimal quantityValue(Object value, String field) {
-        if (!(value instanceof String quantity)) {
-            throw new MetricCollectionException("Invalid " + field + " quantity: " + value);
-        }
-        try {
-            return new Quantity(quantity).getNumber();
-        } catch (RuntimeException error) {
-            throw new MetricCollectionException("Invalid " + field + " quantity: " + value, error);
-        }
-    }
-
-    private static String required(String value, String name) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("CSA " + name + " must not be blank");
+    private static JsonNode objectValue(JsonNode value, String field) {
+        if (value == null || !value.isObject()) {
+            throw new MetricCollectionException(field + " must be an object");
         }
         return value;
+    }
+
+    private static JsonNode valueField(JsonNode object, String field) {
+        if (object == null || !object.isObject() || !object.has(field) || object.get(field).isNull()) {
+            throw new MetricCollectionException("missing field " + field);
+        }
+        return object.get(field);
+    }
+
+    private static String quantityText(JsonNode value, String field) {
+        if (!value.isValueNode()) {
+            throw new MetricCollectionException("Invalid " + field + ": " + value);
+        }
+        return value.asText();
+    }
+
+    private static BigInteger integerQuantity(String value, String field) {
+        try {
+            return new Quantity(value).getNumber().toBigInteger();
+        } catch (RuntimeException error) {
+            throw new MetricCollectionException("Invalid " + field + ": " + value, error);
+        }
     }
 
     public record MetricSnapshot(
             int currentReplicas,
             BigInteger currentMetricValue,
-            BigInteger targetMetricValue) {
+            BigInteger targetMetricValue,
+            String rawCurrentMetricValue,
+            String rawTargetMetricValue) {
     }
 }

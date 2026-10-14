@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: default
+  name: csa-java-http-api
+spec:
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/managed-by: custom-self-adapter-operator
+    v1.custom-resources-adapter.net/owned-by: csa-znn-java-http

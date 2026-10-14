@@ -464,3 +464,26 @@ for f in autoscalers/csa-java-http/profiles/{h,hq,v,vq}.yaml; do cat "$f"; done
 ruby -e 'require "yaml"; expected = %w[interval minReplicas maxReplicas maxCPU metric enabled_strategies].sort; strategies = {"h" => ["adapt_replicas"], "hq" => ["adapt_replicas", "adapt_tag"], "v" => ["adapt_cpu"], "vq" => ["adapt_cpu", "adapt_tag"]}; strategies.each { |tag, enabled| config = YAML.safe_load_file("autoscalers/csa-java-http/profiles/#{tag}.yaml", permitted_classes: [], aliases: false); raise "unexpected keys: #{tag}" unless config.keys.sort == expected; raise "unexpected base values: #{tag}" unless [config["interval"], config["minReplicas"], config["maxReplicas"], config["maxCPU"], config.dig("metric", "name"), config.dig("metric", "selector"), config.dig("metric", "targetValue")] == [5000, 1, 5, 750, "znn_latency_ms_p95", "", 1000]; raise "unexpected strategies: #{tag}" unless config["enabled_strategies"] == enabled }; puts "Validated four Java HTTP profiles"'
 git diff --check
 ```
+
+## Atividade 7 — callbacks HTTP pelo runtime genérico
+
+### Decisões
+
+- A aplicação Java e o runtime genérico são Pods separados gerenciados pelo operador. O runtime coleta a métrica e invoca a API Java pelo Service `csa-java-http-api`.
+- Os profiles mantêm o schema de callbacks do runtime (`metric`, `evaluate`, `adapt`, `kubernetesMetricSpecs`, limites e intervalo) e apontam para o DNS do Service. Um ConfigMap por perfil é montado em `/config.yaml` no Pod do runtime.
+- O Service seleciona a aplicação Java com as labels aplicadas pelo operador. Só o runtime consulta métricas Kubernetes; a API recebe o snapshot pelo HTTP.
+- Sem decisão, `/evaluate` retorna `{}`. O runtime interpreta esse objeto e stdout vazio dos callbacks shell como avaliação sem estratégia, encerrando o ciclo com sucesso e sem chamar `Adapt`. Isso alinha o resultado dos dois protocolos e corrige a falha anterior ao decodificar stdout vazio.
+- Somente `adapt_replicas` fica habilitado nos profiles desta etapa. As adaptações de CPU e tag ainda não estão implementadas.
+- Os manifests usam a imagem `registry.k8s.lab/custom-self-adapter:alpine-empty-evaluation`, que depende da construção/publicação do runtime atualizado. Nenhuma imagem foi publicada nem recurso foi aplicado ao cluster.
+
+### Validação e comandos
+
+O teste Java falhou inicialmente no retorno sem decisão, passou depois que `/evaluate` passou a devolver `{}` e voltou a falhar quando a alteração foi revertida temporariamente. A suíte completa passou; os YAMLs foram parseados e o diff não contém erros de whitespace:
+
+```sh
+./gradlew test
+../../.venv/bin/python -c 'from pathlib import Path; import yaml; base=Path("autoscalers/csa-java-http"); files=sorted(base.glob("profiles/*.yaml"))+sorted(base.glob("custom-selfadapter-*.yaml"))+[base/"service.yaml"]; [list(yaml.safe_load_all(path.read_text())) for path in files]; print(f"parsed {len(files)} YAML files")'
+git diff --check
+```
+
+A suíte Gradle terminou com `BUILD SUCCESSFUL`; 10 YAMLs foram parseados. No worktree local do runtime, `go test ./...` passou após testes RED/GREEN independentes para parsear saída vazia/`{}` e pular adaptação. Não foram executados build ou testes no cluster.
