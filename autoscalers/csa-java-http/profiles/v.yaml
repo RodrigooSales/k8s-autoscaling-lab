@@ -1,12 +1,10 @@
-csa:
-  namespace: default
-  deployment-name: kube-znn
-  metric-name: znn_latency_ms_p95
-  metric-selector: ""
-  target-value: "1000"
-  interval: 5000
-  min-replicas: 1
-  max-replicas: 5
-  max-cpu: 750
-  enabled-strategies:
-    - adapt_cpu
+interval: 5000
+minReplicas: 1
+maxReplicas: 5
+maxCPU: 750
+metric:
+  name: znn_latency_ms_p95
+  selector: ""
+  targetValue: 1000
+enabled_strategies:
+  - adapt_cpu

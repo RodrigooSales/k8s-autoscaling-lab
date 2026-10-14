@@ -442,3 +442,25 @@ kubectl apply -f autoscalers/csa-java-http/custom-selfadapter-h.yaml
 ```
 
 Eles não foram executados nesta etapa. O Spring Boot carrega as propriedades dos profiles selecionados, mas os campos de intervalo, limites e estratégias ainda não dirigem o ciclo periódico/avaliação; os perfis com CPU/tag também não têm adaptadores.
+
+## Registro histórico: primeiro alinhamento dos profiles
+
+Uma etapa anterior alinhou temporariamente os profiles Java HTTP ao formato dos profiles Python HTTP, incluindo `kubernetesMetricSpecs`, `requireKubernetesMetrics` e `logVerbosity`. Na revisão registrada abaixo, essa proposta foi substituída pelo schema menor das implementações HTTP independentes. A validação daquela etapa comparou os quatro YAMLs com os Python HTTP e executou `git diff --check`; esse comparativo não se aplica ao schema atual.
+
+## Revisão do schema dos profiles Java HTTP
+
+O schema foi simplificado para corresponder às implementações HTTP independentes: `interval`, `minReplicas`, `maxReplicas`, `maxCPU`, `metric` (`name`, `selector`, `targetValue`) e `enabled_strategies`. Os quatro profiles mantêm intervalo `5000`, réplicas de `1` a `5`, `maxCPU: 750` e métrica `znn_latency_ms_p95`, seletor vazio e alvo `1000`; só a lista de estratégias varia por H/HQ/V/VQ.
+
+A decisão considera a fronteira do operador: a `CustomSelfAdapter` provisiona o Pod e o RBAC. O serviço independente será dono do ciclo de execução, portanto seus profiles não devem configurar callbacks do executor genérico antigo nem exigir um Service separado. Os blocos `kubernetesMetricSpecs`, `requireKubernetesMetrics` e `logVerbosity` foram removidos, assim como o wrapper de configuração específico do runtime anterior.
+
+`src/main/resources/application.yaml` foi preservado, pois os serviços existentes ainda usam os valores `csa.*`. Embora o Dockerfile copie o profile escolhido para `/app/config/application.yaml`, o runtime ainda não consome o novo schema no ciclo CSA: não há carregamento de `/config.yaml` como configuração CSA nem loop periódico. A adaptação de réplicas é a única estratégia implementada; CPU e tag continuam pendentes.
+
+### Comandos e validação
+
+Os quatro arquivos foram parseados como YAML e verificados quanto ao conjunto de chaves, valores-base e estratégias por cenário. `git diff --check` passou. Não foram executados testes, build, criação de imagem ou comandos no cluster.
+
+```sh
+for f in autoscalers/csa-java-http/profiles/{h,hq,v,vq}.yaml; do cat "$f"; done
+ruby -e 'require "yaml"; expected = %w[interval minReplicas maxReplicas maxCPU metric enabled_strategies].sort; strategies = {"h" => ["adapt_replicas"], "hq" => ["adapt_replicas", "adapt_tag"], "v" => ["adapt_cpu"], "vq" => ["adapt_cpu", "adapt_tag"]}; strategies.each { |tag, enabled| config = YAML.safe_load_file("autoscalers/csa-java-http/profiles/#{tag}.yaml", permitted_classes: [], aliases: false); raise "unexpected keys: #{tag}" unless config.keys.sort == expected; raise "unexpected base values: #{tag}" unless [config["interval"], config["minReplicas"], config["maxReplicas"], config["maxCPU"], config.dig("metric", "name"), config.dig("metric", "selector"), config.dig("metric", "targetValue")] == [5000, 1, 5, 750, "znn_latency_ms_p95", "", 1000]; raise "unexpected strategies: #{tag}" unless config["enabled_strategies"] == enabled }; puts "Validated four Java HTTP profiles"'
+git diff --check
+```
