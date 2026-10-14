@@ -1,26 +1,32 @@
 # CSA Go HTTP
 
-Implementação HTTP em Go. `cmd/csa-go-http/main.go` inicia o servidor e expõe `GET /health`. A coleta fica em `cmd/csa-go-http/metrics.go`; a avaliação pura fica em `cmd/csa-go-http/evaluate.go`; a adaptação de réplicas fica em `cmd/csa-go-http/adapt_replicas.go`. Essas operações ainda não estão ligadas a rotas nem a um ciclo periódico.
+Implementação Go dos callbacks HTTP do Custom Self-Adapter. O ciclo usa dois Pods: o runtime genérico coleta a métrica e chama os callbacks `metric`, `evaluate` e `adapt`; o servidor Go os expõe pelo Service `csa-go-http-api`.
 
-`metricCollector.collect()` lê a métrica externa configurada e depois `spec.replicas` do Deployment. Soma todos os valores da métrica e os converte para milésimos. `CSA_NAMESPACE`, `CSA_DEPLOYMENT_NAME` e `CSA_METRIC_NAME` são obrigatórios. `CSA_METRIC_SELECTOR` é opcional e `CSA_TARGET_VALUE` assume `1000` se não for definido. O cliente Kubernetes é criado na primeira coleta e reutilizado; o health check não carrega configuração do cluster.
+`cmd/csa-go-http/main.go` configura `GET /health`, `POST /metric`, `POST /evaluate` e `POST /adapt/replicas`. O runtime envia os dados de Kubernetes no corpo da chamada; `metrics.go` interpreta esse payload e não consulta o Metrics Server. `evaluate.go` mantém os limiares e limites da implementação Go tradicional. Sem decisão, `/evaluate` responde `{}`. O runtime interpreta isso como ausência de estratégia e não chama `Adapt`.
 
-`evaluate()` recebe um snapshot da coleta e o estado/configuração de CPU e réplicas. Retorna a decisão no formato `{strategy, parameters}`, ou `nil` quando não há adaptação. A avaliação não consulta Kubernetes.
+`adapt_replicas.go` aplica somente `Deployment.spec.replicas`. Por enquanto, todos os profiles habilitam apenas réplicas; adaptadores de CPU e tag ainda não existem nesta implementação HTTP.
 
-`replicaAdapter.adapt()` aplica a quantidade decidida com um strategic merge patch mínimo em `Deployment.spec.replicas`. Ele usa o cliente Kubernetes dinâmico e propaga falhas com o namespace e o nome do Deployment. O ciclo futuro fornecerá a decisão tipada pela avaliação.
+## Configuração e execução no cluster
 
-O projeto fixa Go 1.25 por meio de `mise.toml` e usa `client-go` e `apimachinery` para acessar a API Kubernetes. A partir desta pasta:
+`profiles/{h,hq,v,vq}.yaml` usa o schema de callbacks do runtime genérico, com URLs HTTP e `kubernetesMetricSpecs` para o runtime buscar a métrica. Cada `custom-selfadapter-<perfil>.yaml` contém os recursos `CustomSelfAdapter` do servidor Go e do runtime genérico; o último monta o profile em `/config.yaml`. `service.yaml` seleciona o Pod Go pelas labels aplicadas pelo operador.
+
+Antes de aplicar um perfil, publique a imagem do runtime com suporte a avaliação vazia como `registry.k8s.lab/custom-self-adapter:alpine-empty-evaluation`, crie o ConfigMap e aplique Service e manifest:
 
 ```sh
-mise exec -- go run ./cmd/csa-go-http
-mise exec -- go test ./...
+kubectl create configmap csa-go-http-runtime-config-h \
+  --from-file=config.yaml=autoscalers/csa-go-http/profiles/h.yaml \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f autoscalers/csa-go-http/service.yaml
+kubectl apply -f autoscalers/csa-go-http/custom-selfadapter-h.yaml
 ```
 
-O `Dockerfile` gera um binário estático e seleciona `profiles/{h,hq,v,vq}.yaml` com `--build-arg TAG=<perfil>`. Os manifests `custom-selfadapter-{h,hq,v,vq}.yaml` provisionam um Pod independente por meio do CustomSelfAdapter existente. `spec.config` fornece os nomes do Deployment e da métrica ao container; o operator já injeta `CSA_NAMESPACE` a partir do namespace do recurso.
+Use os sufixos `hq`, `v` ou `vq` para os demais perfis. As imagens Go e do runtime também precisam estar publicadas no registry acessível aos nós.
 
-Os quatro profiles descrevem a configuração da aplicação HTTP independente: `interval`, `minReplicas`, `maxReplicas`, `maxCPU`, `metric` (`name`, `selector`, `targetValue`) e `enabled_strategies`. Os valores-base são intervalo de 5000 ms, réplicas de 1 a 5, CPU máxima de 750 millicores e métrica `znn_latency_ms_p95` com alvo 1000 e seletor vazio. Somente `enabled_strategies` varia por cenário: H usa réplicas, HQ usa réplicas e tag, V usa CPU, e VQ usa CPU e tag. Os YAMLs não configuram callbacks HTTP do executor genérico antigo.
+## Desenvolvimento local
 
-O CustomSelfAdapter existente provisiona o Pod, ServiceAccount, Role e RoleBinding. O Role padrão já permite operações amplas sobre Pods e Deployments; estes manifests mantêm `roleRequiresMetricsServer` falso e adicionam somente `get`/`list` para a métrica externa nomeada. Não é necessário um Service Kubernetes: o processo HTTP independente será dono do ciclo periódico dentro do próprio Pod.
+```sh
+mise exec -- go test ./...
+docker build --build-arg TAG=h -t csa-go-http:h autoscalers/csa-go-http
+```
 
-A aplicação ainda não carrega `/config.yaml` nem executa um ciclo periódico. Coleta e adaptação leem configuração do ambiente, enquanto `evaluate()` recebe limites e estratégias por argumento. Hoje só `GET /health` está exposto; coleta, avaliação e adaptação não estão ligadas a rotas ou ao ciclo. As estratégias CPU e tag também não têm adaptadores nesta implementação. Portanto, os profiles e manifests preparam o empacotamento para testes futuros, mas ainda não executam o autoscaling completo.
-
-O histórico das decisões, comandos e validações fica em [docs/csa-go-http/historico-de-desenvolvimento.md](../../docs/csa-go-http/historico-de-desenvolvimento.md).
+O Dockerfile compila um binário estático e inclui o profile selecionado. O histórico de decisões, comandos e validações está em [docs/csa-go-http/historico-de-desenvolvimento.md](../../docs/csa-go-http/historico-de-desenvolvimento.md).

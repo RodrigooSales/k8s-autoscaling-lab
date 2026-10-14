@@ -239,3 +239,26 @@ git diff --cached --check
 ```
 
 O parse YAML validou as chaves, valores-base, métrica e estratégias dos quatro profiles; a comparação confirmou os mesmos valores-base dos quatro profiles Python HTTP. `git diff --check` e `git diff --cached --check` não apontaram problemas. Não foram executados testes, build, push de imagem, `kubectl apply` ou validação no cluster.
+
+## Atividade 7 — callbacks HTTP pelo runtime genérico
+
+### Decisões
+
+- O servidor Go e o runtime genérico ficam em Pods separados, ambos provisionados pelo operador como `CustomSelfAdapter`. O runtime coleta a métrica e chama a API Go pelo Service `csa-go-http-api`.
+- Cada profile conserva as chaves do runtime (`metric`, `evaluate`, `adapt`, `kubernetesMetricSpecs`, limites e intervalo), mudando os callbacks para HTTP pelo DNS do Service. O runtime monta o profile do ConfigMap `csa-go-http-runtime-config-<perfil>` em `/config.yaml`.
+- O Service seleciona o Pod Go pelas labels do operador. O runtime recebe acesso ao servidor de métricas; a API recebe os dados no payload e não consulta a métrica externa de novo.
+- Quando a avaliação não escolhe uma estratégia, a API responde `{}`. O runtime passa a tratar `{}` e stdout vazio de callbacks shell como avaliação sem estratégia e retorna sucesso sem executar `Adapt`. A mudança remove a divergência de protocolo no ciclo sem mudança e corrige o parse de stdout vazio.
+- Todos os profiles habilitam somente `adapt_replicas` nesta etapa. CPU e tag seguem pendentes.
+- Os manifests dependem da imagem `registry.k8s.lab/custom-self-adapter:alpine-empty-evaluation`, que ainda precisa ser construída e publicada antes do teste em cluster. Essa publicação não ocorreu.
+
+### Validação e comandos
+
+O teste HTTP falhou inicialmente porque `/evaluate` emitia uma estratégia de adaptação artificial e havia uma rota correspondente. Após devolver `{}` e remover a rota, passou; ao reverter temporariamente a produção, voltou a falhar. A suíte completa e a validação YAML passaram:
+
+```sh
+mise exec -- go test ./...
+../../.venv/bin/python -c 'from pathlib import Path; import yaml; base=Path("autoscalers/csa-go-http"); files=sorted(base.glob("profiles/*.yaml"))+sorted(base.glob("custom-selfadapter-*.yaml"))+[base/"service.yaml"]; [list(yaml.safe_load_all(path.read_text())) for path in files]; print(f"parsed {len(files)} YAML files")'
+git diff --check
+```
+
+A suíte Go passou; 9 YAMLs foram parseados. O runtime genérico passou `go test ./...`, incluindo testes que primeiro falharam para stdout vazio, passaram com a correção e voltaram a falhar durante a reversão temporária. Não houve publicação de imagem nem aplicação de recursos no cluster.
