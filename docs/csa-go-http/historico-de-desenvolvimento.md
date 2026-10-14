@@ -336,3 +336,15 @@ kubectl delete namespace csa-http-204-smoke-20261014 --wait=true --timeout=120s
 O teste cobriu os Services das APIs no cluster. Não executou o ciclo completo do operador/runtime nem alterou o Deployment de pesquisa. Embora o executor HTTP reconheça `204` como sucesso, o runtime genérico ainda tenta interpretar o corpo vazio como JSON e retorna erro antes de chamar a adaptação. O stdout vazio do shell segue o mesmo caminho. Evitar esse erro e tratar a ausência como no-op bem-sucedido exige uma mudança no runtime externo, que permaneceu sem alterações.
 
 O parse estático dos oito YAMLs passou; nos quatro pares, estrutura e valores-base coincidiam, variando somente `enabled_strategies`. `git diff --check` também passou. Nenhuma suíte de testes foi executada.
+
+## Comparação dos retornos sem decisão no runtime
+
+Em 2026-10-14, foi executada uma sondagem isolada do `evaluatecalc.Evaluator` real do runtime, sem modificar o repositório de referência. O executor HTTP recebeu `204` sem corpo; o executor shell rodou `/bin/sh -c true`, encerrando com sucesso e sem escrever no `stdout`. Ambos chegaram ao parser como string vazia e produziram o mesmo erro: `failed to parse JSON evaluation, got '': unexpected end of JSON input`.
+
+A sondagem usou um teste Go temporário e `go test -overlay`; o arquivo de teste, overlay e cache ficaram em `/tmp/csa-runtime-204-probe`. Comando executado no repositório do runtime:
+
+```sh
+GOCACHE=/tmp/csa-runtime-204-probe/gocache GOSUMDB=off GOPROXY=off go test -overlay=/tmp/csa-runtime-204-probe/overlay.json -run TestNoDecisionShellAndHTTPResponsesReachSameParserError -v ./internal/evaluatecalc
+```
+
+O teste passou ao confirmar que os dois protocolos falham da mesma forma. Isso mostra que o problema não é exclusivo das APIs HTTP; também há registro de erro para stdout vazio no caminho shell durante carga em [`docs/csa-go/execucao-carga.md`](../csa-go/execucao-carga.md). Nenhum cluster, `run_tests.sh`, arquivo do runtime ou operador foi alterado nesta verificação. A validação prática posterior deve observar esse ciclo no runtime implantado.

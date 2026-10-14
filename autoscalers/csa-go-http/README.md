@@ -2,7 +2,7 @@
 
 Implementação Go dos callbacks HTTP do Custom Self-Adapter. O ciclo usa dois Pods: o runtime genérico coleta a métrica e executa `metric`, `evaluate` e `adapt`; o servidor Go atende os callbacks pelo Service `csa-go-http-api`.
 
-`cmd/csa-go-http/main.go` publica `GET /health`, `POST /metric`, `POST /evaluate` e `POST /adapt/replicas`. `metrics.go` interpreta a entrada enviada pelo runtime, `evaluate.go` aplica os limiares existentes e `adapt_replicas.go` altera somente `Deployment.spec.replicas`. Quando não há decisão, `/evaluate` responde `{}`; o runtime genérico atual pode registrar erro ao tentar adaptar uma avaliação sem estratégia. Essa resposta mantém o contrato da avaliação shell. O runtime externo não foi alterado.
+`cmd/csa-go-http/main.go` publica `GET /health`, `POST /metric`, `POST /evaluate` e `POST /adapt/replicas`. `metrics.go` interpreta a entrada enviada pelo runtime, `evaluate.go` aplica os limiares existentes e `adapt_replicas.go` altera somente `Deployment.spec.replicas`. Quando não há decisão, `/evaluate` responde `204 No Content` sem corpo. O runtime tenta interpretar essa saída vazia como JSON e falha; o callback shell também produz saída vazia nesse caso e falha no mesmo parser. Essa equivalência foi reproduzida com o evaluator do runtime, que não foi alterado.
 
 ## Profiles e cenários
 
