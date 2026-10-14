@@ -173,3 +173,69 @@ kubectl apply -f custom-selfadapter-h.yaml
 - Revisão estática dos perfis e dos campos comparando-os com o schema CRD compartilhado e com o controller instalado no repositório irmão.
 - `git diff --check` e inspeção de whitespace executados após as alterações.
 - Não foram executados testes, build Go/Docker, push de imagem, `kubectl apply` ou testes no cluster, conforme o escopo desta atividade.
+
+## Atividade 5 — Estrutura preliminar dos profiles HTTP
+
+### Decisões
+
+- A primeira proposta alinhou os profiles Go HTTP às chaves do executor Kubernetes anterior: `interval`, `minReplicas`, `maxReplicas`, `maxCPU`, `kubernetesMetricSpecs`, `enabled_strategies`, `requireKubernetesMetrics` e `logVerbosity`.
+- Essa estrutura foi substituída na Atividade 6. A implementação HTTP é independente, então os profiles descrevem as entradas da aplicação (`metric.name`, `metric.selector` e `metric.targetValue`) em vez de especificar como um runtime genérico consulta métricas. O histórico mantém esta etapa para registrar a revisão da decisão.
+- A intenção inicial de não repetir callbacks `metric`, `evaluate` ou `adapt` do executor antigo permanece. A aplicação Go ainda não carrega os profiles.
+
+### Comandos de inspeção e validação
+
+Executados na worktree `.worktrees/csa-go-http-profiles`:
+
+```sh
+for file in autoscalers/csa-go-http/profiles/{h,hq,v,vq}.yaml; do cat "$file"; done
+for file in ../csa-python-http-profiles/autoscalers/csa-python-http/profiles/{h,hq,v,vq}.yaml; do cat "$file"; done
+../../.venv/bin/python -c 'from pathlib import Path; import yaml; go=Path("autoscalers/csa-go-http/profiles"); py=Path("../csa-python-http-profiles/autoscalers/csa-python-http/profiles"); names=("h", "hq", "v", "vq"); docs={"go": {name: yaml.safe_load((go / f"{name}.yaml").read_text()) for name in names}, "python": {name: yaml.safe_load((py / f"{name}.yaml").read_text()) for name in names}}; expected={"interval", "minReplicas", "maxReplicas", "maxCPU", "kubernetesMetricSpecs", "enabled_strategies", "requireKubernetesMetrics", "logVerbosity"}; assert all(set(profile) == expected for profiles in docs.values() for profile in profiles.values()); assert all({key: value for key, value in docs["go"][name].items() if key != "enabled_strategies"} == {key: value for key, value in docs["python"][name].items() if key != "enabled_strategies"} for name in names); print("parsed 8 YAML profiles; Go structure/base values match Python HTTP")'
+git diff --check
+```
+
+O parse estático dos oito YAMLs passou; nos quatro pares, estrutura e valores-base coincidiam, variando somente `enabled_strategies`. `git diff --check` também passou. Nenhuma suíte de testes foi executada.
+
+## Atividade 6 — Configuração da aplicação HTTP independente
+
+### Decisões
+
+- Os quatro profiles usam a estrutura própria do ciclo da aplicação: `interval`, `minReplicas`, `maxReplicas`, `maxCPU`, `metric` com `name`, `selector` e `targetValue`, e `enabled_strategies`. Os valores comuns são intervalo de 5000 ms, réplicas de 1 a 5, CPU máxima de 750 millicores, métrica `znn_latency_ms_p95`, seletor vazio e alvo 1000. H habilita `adapt_replicas`; HQ habilita `adapt_replicas` e `adapt_tag`; V habilita `adapt_cpu`; VQ habilita `adapt_cpu` e `adapt_tag`.
+- A decisão decorre do operator inspecionado: o CustomSelfAdapter provisiona o Pod da aplicação, ServiceAccount, Role e RoleBinding. O processo independente será responsável por seu próprio ciclo; por isso, os profiles não configuram callbacks HTTP do executor genérico e os manifests não precisam criar um Service Kubernetes.
+- `roleRequiresMetricsServer` permanece falso, evitando a concessão de CRUD amplo para vários grupos de métricas. `additionalRoleRules` concede somente `get` e `list` sobre `znn_latency_ms_p95` em `external.metrics.k8s.io`; o Role padrão do operator ainda concede permissões amplas sobre Pods e Deployments.
+- A aplicação ainda não carrega `/config.yaml`, não executa o ciclo periódico e expõe somente `GET /health`. Assim, a estrutura dos profiles é a configuração pretendida, não um fluxo funcional de autoscaling nesta versão.
+- Esta revisão altera somente os quatro profiles, o README e este histórico. Código, manifests e binários foram preservados.
+
+### Comandos de inspeção, atualização e validação
+
+Executados na worktree `.worktrees/csa-go-http-profiles`, salvo a inspeção do operator, feita no repositório irmão `custom-self-adapter-operator`:
+
+```sh
+git status --short --branch
+git diff -- autoscalers/csa-go-http/profiles
+sed -n '1,240p' autoscalers/csa-go-http/README.md
+sed -n '1,280p' docs/csa-go-http/historico-de-desenvolvimento.md
+rg -n "Service|create.*Pod|ProvisionPod|RoleRequiresMetricsServer|AdditionalRoleRules|Config" ../../../custom-self-adapter-operator/internal/controller
+sed -n '1,220p' charts/custom-self-adapter-operator/templates/crd/customselfadapters.custom-self-adapter.net.yaml
+rg -n "roleRequiresMetricsServer|additionalRoleRules|external.metrics.k8s.io|resources:|verbs:" autoscalers/csa-go-http/custom-selfadapter-*.yaml
+rg -n "config.yaml|CSA_METRIC_NAME|CSA_METRIC_SELECTOR|CSA_TARGET_VALUE|ListenAndServe|HandleFunc|/health" autoscalers/csa-go-http/cmd/csa-go-http
+for file in autoscalers/csa-go-http/profiles/{h,hq,v,vq}.yaml; do cat "$file"; done
+for file in ../csa-python-http-profiles/autoscalers/csa-python-http/profiles/{h,hq,v,vq}.yaml; do cat "$file"; done
+```
+
+Na pasta do repositório irmão `custom-self-adapter-operator`, a inspeção do controller foi:
+
+```sh
+rg -n "Service|create.*Pod|ProvisionPod|RoleRequiresMetricsServer|AdditionalRoleRules|Config" internal/controller
+sed -n '140,315p' internal/controller/customselfadapter_controller.go
+```
+
+Parse estático dos quatro profiles e checagem de whitespace:
+
+```sh
+../../.venv/bin/python -c 'from pathlib import Path; import yaml; root=Path("autoscalers/csa-go-http/profiles"); names=("h", "hq", "v", "vq"); strategies={"h": ["adapt_replicas"], "hq": ["adapt_replicas", "adapt_tag"], "v": ["adapt_cpu"], "vq": ["adapt_cpu", "adapt_tag"]}; expected={"interval", "minReplicas", "maxReplicas", "maxCPU", "metric", "enabled_strategies"}; profiles={name: yaml.safe_load((root / f"{name}.yaml").read_text()) for name in names}; assert all(set(profile) == expected for profile in profiles.values()); assert all({key: profile[key] for key in ("interval", "minReplicas", "maxReplicas", "maxCPU")} == {"interval": 5000, "minReplicas": 1, "maxReplicas": 5, "maxCPU": 750} for profile in profiles.values()); assert all(profile["metric"] == {"name": "znn_latency_ms_p95", "selector": "", "targetValue": 1000} for profile in profiles.values()); assert all(profile["enabled_strategies"] == strategies[name] for name, profile in profiles.items()); print("parsed and checked 4 Go HTTP profiles")'
+../../.venv/bin/python -c 'from pathlib import Path; import yaml; names=("h", "hq", "v", "vq"); go=Path("autoscalers/csa-go-http/profiles"); py=Path("../csa-python-http-profiles/autoscalers/csa-python-http/profiles"); g={n:yaml.safe_load((go/f"{n}.yaml").read_text()) for n in names}; p={n:yaml.safe_load((py/f"{n}.yaml").read_text()) for n in names}; fields=("interval", "minReplicas", "maxReplicas", "maxCPU", "metric"); assert all({k:g[n][k] for k in fields} == {k:p[n][k] for k in fields} for n in names); print("Go HTTP base configuration matches Python HTTP for H/HQ/V/VQ")'
+git diff --check
+git diff --cached --check
+```
+
+O parse YAML validou as chaves, valores-base, métrica e estratégias dos quatro profiles; a comparação confirmou os mesmos valores-base dos quatro profiles Python HTTP. `git diff --check` e `git diff --cached --check` não apontaram problemas. Não foram executados testes, build, push de imagem, `kubectl apply` ou validação no cluster.

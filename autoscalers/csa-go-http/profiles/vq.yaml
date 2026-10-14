@@ -6,6 +6,6 @@ metric:
   name: znn_latency_ms_p95
   selector: ""
   targetValue: 1000
-enabledStrategies:
+enabled_strategies:
   - adapt_cpu
   - adapt_tag
