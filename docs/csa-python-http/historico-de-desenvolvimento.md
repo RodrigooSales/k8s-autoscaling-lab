@@ -213,3 +213,26 @@ git diff --check
 ```
 
 Os quatro profiles foram lidos como YAML válido e `git diff --check` não apontou problemas de whitespace. Não foram executados testes nem build. O comando de build para uso futuro permanece `docker build --build-arg PROFILE=h -t csa-python-http:h autoscalers/csa-python-http`; ele não foi executado nem publicou imagem.
+
+## Atividade 7 — callbacks HTTP pelo runtime genérico
+
+### Decisões
+
+- O Pod Python permanece separado do Pod do runtime genérico. O operador gerencia ambos como `CustomSelfAdapter`; o runtime coleta a métrica e chama a API Python pelo `Service` `csa-python-http-api`.
+- Cada profile mantém a estrutura de `metric`, `evaluate`, `adapt`, `kubernetesMetricSpecs`, limites e intervalo do runtime existente. As URLs dos callbacks usam o DNS do Service. O ConfigMap `csa-python-http-runtime-config-<perfil>` monta o mesmo profile em `/config.yaml` no Pod do runtime.
+- O Service seleciona o Pod Python pelas labels `app.kubernetes.io/managed-by` e `v1.custom-resources-adapter.net/owned-by` aplicadas pelo operador. Só o runtime recebe acesso ao servidor de métricas. O Pod Python recebe o payload coletado pelo runtime e não consulta a métrica externa novamente.
+- A avaliação sem decisão retorna `{}`. O runtime genérico passa a aceitar tanto esse objeto como stdout vazio dos callbacks shell, representa ambos como avaliação sem estratégia e encerra o ciclo sem chamar `Adapt`. Isso alinha o resultado sem ação entre os dois protocolos e corrige a falha de parse que ocorria com stdout vazio.
+- Nesta etapa, todos os profiles habilitam apenas `adapt_replicas`. CPU e tag continuam fora do escopo implementado.
+- Os manifests usam a imagem `registry.k8s.lab/custom-self-adapter:alpine-empty-evaluation`. Ela depende da construção e publicação do runtime atualizado; essa publicação e o teste no cluster não foram executados.
+
+### Validação e comandos
+
+O teste do callback primeiro falhou porque a API devolvia uma estratégia extra; passou após `/evaluate` devolver `{}`. Ao reverter temporariamente a correção, voltou a falhar. A suíte completa passou:
+
+```sh
+../../.venv/bin/pytest autoscalers/csa-python-http/tests -q
+../../.venv/bin/python -c 'from pathlib import Path; import yaml; base=Path("autoscalers/csa-python-http"); files=sorted(base.glob("profiles/*.yaml"))+sorted(base.glob("custom-selfadapter-*.yaml"))+[base/"service.yaml"]; [list(yaml.safe_load_all(path.read_text())) for path in files]; print(f"parsed {len(files)} YAML files")'
+git diff --check
+```
+
+Resultado: `17 passed`; 10 YAMLs foram parseados. No worktree local `../custom-self-adapter-empty-evaluation`, `go test ./internal/evaluatecalc ./internal/adapting -count=1` passou após demonstrar RED e GREEN para stdout vazio e `{}`. `go test ./...` também passou no runtime. Não foram publicados containers nem aplicados recursos Kubernetes.
