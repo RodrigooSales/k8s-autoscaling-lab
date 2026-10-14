@@ -1,0 +1,49 @@
+apiVersion: custom-self-adapter.net/v1
+kind: CustomSelfAdapter
+metadata:
+  namespace: default
+  name: csa-znn-python-http
+spec:
+  template:
+    spec:
+      nodeSelector:
+        autoscaling.lab/adaptation: "yes"
+      containers:
+        - name: csa-znn-python-http
+          image: registry.k8s.lab/csa-python-http:h
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: CSA_DEPLOYMENT_NAME
+              value: kube-znn
+            - name: CSA_METRIC_NAME
+              value: znn_latency_ms_p95
+            - name: CSA_TARGET_VALUE
+              value: "1000"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: "128m"
+              memory: "128Mi"
+            limits:
+              cpu: "1024m"
+              memory: "1024Mi"
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kube-znn
+  roleRequiresMetricsServer: false
+  additionalRoleRules:
+    - apiGroups:
+        - external.metrics.k8s.io
+      resources:
+        - znn_latency_ms_p95
+      verbs:
+        - get
+        - list

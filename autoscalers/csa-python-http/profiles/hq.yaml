@@ -1,0 +1,17 @@
+interval: 5000
+minReplicas: 1
+maxReplicas: 5
+maxCPU: 750
+kubernetesMetricSpecs:
+  - type: External
+    external:
+      metric:
+        name: znn_latency_ms_p95
+      target:
+        type: Value
+        value: 1000
+enabled_strategies:
+  - adapt_replicas
+  - adapt_tag
+requireKubernetesMetrics: true
+logVerbosity: 4
