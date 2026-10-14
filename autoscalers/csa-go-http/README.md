@@ -1,32 +1,35 @@
 # CSA Go HTTP
 
-Implementação Go dos callbacks HTTP do Custom Self-Adapter. O ciclo usa dois Pods: o runtime genérico coleta a métrica e chama os callbacks `metric`, `evaluate` e `adapt`; o servidor Go os expõe pelo Service `csa-go-http-api`.
+Implementação Go dos callbacks HTTP do Custom Self-Adapter. O ciclo usa dois Pods: o runtime genérico coleta a métrica e executa `metric`, `evaluate` e `adapt`; o servidor Go atende os callbacks pelo Service `csa-go-http-api`.
 
-`cmd/csa-go-http/main.go` configura `GET /health`, `POST /metric`, `POST /evaluate` e `POST /adapt/replicas`. O runtime envia os dados de Kubernetes no corpo da chamada; `metrics.go` interpreta esse payload e não consulta o Metrics Server. `evaluate.go` mantém os limiares e limites da implementação Go tradicional. Sem decisão, `/evaluate` responde `{}`. O runtime interpreta isso como ausência de estratégia e não chama `Adapt`.
+`cmd/csa-go-http/main.go` publica `GET /health`, `POST /metric`, `POST /evaluate` e `POST /adapt/replicas`. `metrics.go` interpreta a entrada enviada pelo runtime, `evaluate.go` aplica os limiares existentes e `adapt_replicas.go` altera somente `Deployment.spec.replicas`. Quando não há decisão, `/evaluate` responde `{}`; o runtime genérico atual pode registrar erro ao tentar adaptar uma avaliação sem estratégia. Essa resposta mantém o contrato da avaliação shell. O runtime externo não foi alterado.
 
-`adapt_replicas.go` aplica somente `Deployment.spec.replicas`. Por enquanto, todos os profiles habilitam apenas réplicas; adaptadores de CPU e tag ainda não existem nesta implementação HTTP.
+## Profiles e cenários
 
-## Configuração e execução no cluster
+Cada arquivo em `profiles/` preserva os blocos `metric`, `evaluate` e `adapt` usados pelo runtime shell, com os executores HTTP apontando para o Service. As estratégias habilitadas seguem os cenários Go tradicionais:
 
-`profiles/{h,hq,v,vq}.yaml` usa o schema de callbacks do runtime genérico, com URLs HTTP e `kubernetesMetricSpecs` para o runtime buscar a métrica. Cada `custom-selfadapter-<perfil>.yaml` contém os recursos `CustomSelfAdapter` do servidor Go e do runtime genérico; o último monta o profile em `/config.yaml`. `service.yaml` seleciona o Pod Go pelas labels aplicadas pelo operador.
+| Profile | Estratégias habilitadas |
+| --- | --- |
+| `h` | `adapt_replicas` |
+| `hq` | `adapt_replicas`, `adapt_tag` |
+| `v` | `adapt_cpu` |
+| `vq` | `adapt_cpu`, `adapt_tag` |
 
-Antes de aplicar um perfil, publique a imagem do runtime com suporte a avaliação vazia como `registry.k8s.lab/custom-self-adapter:alpine-empty-evaluation`, crie o ConfigMap e aplique Service e manifest:
+Só o callback de réplicas está implementado nesta versão. Portanto `h` é o único profile cujas estratégias selecionadas têm uma rota correspondente; `hq`, `v` e `vq` documentam a configuração de cenário e dependem dos adaptadores de tag/CPU futuros.
+
+## Imagens e cluster
+
+Cada manifest `custom-selfadapter-<profile>.yaml` contém dois recursos `CustomSelfAdapter`: a API e o runtime. `runtime.Dockerfile` deriva da imagem genérica existente e embute o profile selecionado em `/config.yaml`. Assim, não há ConfigMap. `service.yaml` é o Service explícito que aponta para os Pods da API; o operador continua responsável pelos Pods e pelo RBAC de cada recurso.
+
+Exemplo de build e publicação do profile `h`, executado na pasta `autoscalers/csa-go-http`:
 
 ```sh
-kubectl create configmap csa-go-http-runtime-config-h \
-  --from-file=config.yaml=autoscalers/csa-go-http/profiles/h.yaml \
-  --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -f autoscalers/csa-go-http/service.yaml
-kubectl apply -f autoscalers/csa-go-http/custom-selfadapter-h.yaml
+docker build --build-arg TAG=h -t registry.k8s.lab/csa-znn-go-http:h .
+docker build -f runtime.Dockerfile --build-arg PROFILE=h -t registry.k8s.lab/csa-znn-go-http-runtime:h .
+docker push registry.k8s.lab/csa-znn-go-http:h
+docker push registry.k8s.lab/csa-znn-go-http-runtime:h
+kubectl apply -f service.yaml
+kubectl apply -f custom-selfadapter-h.yaml
 ```
 
-Use os sufixos `hq`, `v` ou `vq` para os demais perfis. As imagens Go e do runtime também precisam estar publicadas no registry acessível aos nós.
-
-## Desenvolvimento local
-
-```sh
-mise exec -- go test ./...
-docker build --build-arg TAG=h -t csa-go-http:h autoscalers/csa-go-http
-```
-
-O Dockerfile compila um binário estático e inclui o profile selecionado. O histórico de decisões, comandos e validações está em [docs/csa-go-http/historico-de-desenvolvimento.md](../../docs/csa-go-http/historico-de-desenvolvimento.md).
+Para outro cenário, use o mesmo sufixo nos dois builds e no manifest. O runtime base `registry.k8s.lab/custom-self-adapter:alpine-latest` está fixado pelo digest em `runtime.Dockerfile` e precisa estar disponível no registry. O histórico de decisões, comandos e validações está em [docs/csa-go-http/historico-de-desenvolvimento.md](../../docs/csa-go-http/historico-de-desenvolvimento.md).

@@ -63,5 +63,6 @@ kubernetesMetricSpecs:
         value: 1000
 enabled_strategies:
   - adapt_replicas
+  - adapt_tag
 requireKubernetesMetrics: true
 logVerbosity: 4
