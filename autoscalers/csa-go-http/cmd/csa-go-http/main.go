@@ -113,6 +113,10 @@ func newHTTPHandler(profile runtimeProfile, adaptReplicas replicaAdaptingFunc) h
 			writeCallbackError(response, http.StatusBadRequest, err)
 			return
 		}
+		if len(result) == 0 {
+			response.WriteHeader(http.StatusNoContent)
+			return
+		}
 		writeCallbackJSON(response, result)
 	})
 	mux.HandleFunc("POST /adapt/replicas", func(response http.ResponseWriter, request *http.Request) {
@@ -208,7 +212,7 @@ func evaluationResult(input []byte, profile runtimeProfile) ([]byte, error) {
 		return nil, err
 	}
 	if decision == nil {
-		return []byte("{}"), nil
+		return nil, nil
 	}
 	return json.Marshal(decision)
 }

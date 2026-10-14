@@ -38,7 +38,7 @@ func TestMetricCallbackConsumesGenericRuntimePayload(t *testing.T) {
 	}
 }
 
-func TestEvaluateCallbackReturnsRuntimeDecisionOrEmptyObject(t *testing.T) {
+func TestEvaluateCallbackReturnsDecisionOrNoContent(t *testing.T) {
 	profile := runtimeProfile{
 		MinReplicas:       1,
 		MaxReplicas:       5,
@@ -47,19 +47,21 @@ func TestEvaluateCallbackReturnsRuntimeDecisionOrEmptyObject(t *testing.T) {
 	}
 	handler := testHTTPHandler(&profile)
 	tests := []struct {
-		name string
-		body string
-		want string
+		name       string
+		body       string
+		wantStatus int
+		wantBody   string
 	}{
 		{
-			name: "replica decision",
-			body: `{"resource":{"spec":{"replicas":2}},"metrics":[{"value":"{\"current_value\":\"950000\",\"target_value\":\"1000\"}"}]}`,
-			want: `{"strategy":"adapt_replicas","parameters":{"replicas":2}}`,
+			name:       "replica decision",
+			body:       `{"resource":{"spec":{"replicas":2}},"metrics":[{"value":"{\"current_value\":\"950000\",\"target_value\":\"1000\"}"}]}`,
+			wantStatus: http.StatusOK,
+			wantBody:   `{"strategy":"adapt_replicas","parameters":{"replicas":2}}`,
 		},
 		{
-			name: "no decision",
-			body: `{"resource":{"spec":{"replicas":2}},"metrics":[{"value":"{\"current_value\":\"940000\",\"target_value\":\"1000\"}"}]}`,
-			want: `{}`,
+			name:       "no decision",
+			body:       `{"resource":{"spec":{"replicas":2}},"metrics":[{"value":"{\"current_value\":\"940000\",\"target_value\":\"1000\"}"}]}`,
+			wantStatus: http.StatusNoContent,
 		},
 	}
 	for _, test := range tests {
@@ -67,18 +69,24 @@ func TestEvaluateCallbackReturnsRuntimeDecisionOrEmptyObject(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/evaluate", strings.NewReader(test.body))
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
-			if response.Code != http.StatusOK {
-				t.Fatalf("evaluate status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+			if response.Code != test.wantStatus {
+				t.Fatalf("evaluate status = %d, want %d: %s", response.Code, test.wantStatus, response.Body.String())
+			}
+			if test.wantStatus == http.StatusNoContent {
+				if response.Body.Len() != 0 {
+					t.Errorf("no-decision body = %q, want empty body", response.Body.String())
+				}
+				return
 			}
 			var actual, expected any
 			if err := json.Unmarshal(response.Body.Bytes(), &actual); err != nil {
 				t.Fatal(err)
 			}
-			if err := json.Unmarshal([]byte(test.want), &expected); err != nil {
+			if err := json.Unmarshal([]byte(test.wantBody), &expected); err != nil {
 				t.Fatal(err)
 			}
 			if !jsonEqual(actual, expected) {
-				t.Errorf("evaluate result = %s, want %s", response.Body.String(), test.want)
+				t.Errorf("evaluate result = %s, want %s", response.Body.String(), test.wantBody)
 			}
 		})
 	}
