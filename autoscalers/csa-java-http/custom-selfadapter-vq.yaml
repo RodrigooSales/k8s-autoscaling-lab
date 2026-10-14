@@ -51,13 +51,8 @@ spec:
         autoscaling.lab/adaptation: "yes"
       containers:
         - name: custom-self-adapter
-          image: registry.k8s.lab/custom-self-adapter:alpine-empty-evaluation
+          image: registry.k8s.lab/csa-znn-java-http-runtime:vq
           imagePullPolicy: Always
-          volumeMounts:
-            - name: runtime-config
-              mountPath: /config.yaml
-              subPath: config.yaml
-              readOnly: true
           resources:
             requests:
               cpu: "128m"
@@ -65,10 +60,6 @@ spec:
             limits:
               cpu: "1024m"
               memory: "1024Mi"
-      volumes:
-        - name: runtime-config
-          configMap:
-            name: csa-java-http-runtime-config-vq
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
