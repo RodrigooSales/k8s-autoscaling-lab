@@ -1,0 +1,11 @@
+interval: 5000
+minReplicas: 1
+maxReplicas: 5
+maxCPU: 750
+metric:
+  name: znn_latency_ms_p95
+  selector: ""
+  targetValue: 1000
+enabledStrategies:
+  - adapt_cpu
+  - adapt_tag
