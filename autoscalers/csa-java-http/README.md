@@ -2,7 +2,9 @@
 
 Implementação Java dos callbacks HTTP do Custom Self-Adapter. O ciclo usa dois Pods: o runtime genérico coleta a métrica e executa `metric`, `evaluate` e `adapt`; a aplicação Spring Boot atende os callbacks pelo Service `csa-java-http-api`.
 
-`CallbackController` publica health, coleta, avaliação e adaptação de réplicas. `MetricCollectionService` interpreta a entrada enviada pelo runtime, `EvaluationService` aplica os limiares existentes e `ReplicaAdaptationService` altera somente `Deployment.spec.replicas`. Quando não há decisão, `/evaluate` responde `204 No Content` sem corpo. O runtime tenta interpretar essa saída vazia como JSON e falha; o callback shell também produz saída vazia nesse caso e falha no mesmo parser. Essa equivalência foi reproduzida com o evaluator do runtime, que não foi alterado.
+`CallbackController` publica health, coleta, avaliação e os callbacks de réplica, CPU e tag. `MetricCollectionService` interpreta a entrada do runtime; `EvaluationService` aplica os limiares; `ReplicaAdaptationService`, `CpuAdaptationService` e `TagAdaptationService` implementam cada adaptação em seu próprio arquivo. `AdaptationStateService` centraliza acesso ao Deployment, Pods e `initialData` do CSA.
+
+CPU usa o mesmo multiplicador, limites inicial/máximo e subrecurso `pods/resize` da versão shell. Tag percorre `100k`, `200k`, `400k`, `600k` e `800k`, respeita o tag inicial e sincroniza limites de CPU quando `update_cpu` é solicitado. Ambas ignoram alterações durante rollout. Quando não há decisão, `/evaluate` responde `204 No Content` sem corpo; o problema conhecido do runtime ao interpretar corpo vazio continua registrado abaixo.
 
 ## Profiles e cenários
 
@@ -15,7 +17,7 @@ Cada arquivo em `profiles/` preserva os blocos `metric`, `evaluate` e `adapt` us
 | `v` | `adapt_cpu` |
 | `vq` | `adapt_cpu`, `adapt_tag` |
 
-Só o callback de réplicas está implementado nesta versão. Portanto `h` é o único profile cujas estratégias selecionadas têm uma rota correspondente; `hq`, `v` e `vq` documentam a configuração de cenário e dependem dos adaptadores de tag/CPU futuros.
+Os quatro profiles têm rotas correspondentes às estratégias habilitadas. A API recebe a regra adicional `pods/resize` para executar CPU; o runtime genérico mantém sua própria identidade e permissões.
 
 ## Imagens e cluster
 

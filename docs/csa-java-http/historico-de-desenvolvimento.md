@@ -573,3 +573,60 @@ GOCACHE=/tmp/csa-runtime-204-probe/gocache GOSUMDB=off GOPROXY=off go test -over
 ```
 
 O teste passou ao confirmar que os dois protocolos falham da mesma forma. Isso mostra que o problema não é exclusivo das APIs HTTP; também há registro de erro para stdout vazio no caminho shell durante carga em [`docs/csa-go/execucao-carga.md`](../csa-go/execucao-carga.md). Nenhum cluster, `run_tests.sh`, arquivo do runtime ou operador foi alterado nesta verificação. A validação prática posterior deve observar esse ciclo no runtime implantado.
+
+## Adaptações de CPU e tag
+
+### Decisões
+
+- Foram adicionados os callbacks `/adapt/cpu` e `/adapt/tag`, cada um em um serviço Java dedicado. `AdaptationStateService` compartilha o acesso ao Deployment, Pods, baseline e status `initialData`.
+- CPU lê o multiplicador da avaliação, arredonda como a versão shell, limita o resultado entre baseline e `maxCPU` e envia `pods/resize` para os containers `znn` e `nginx`. Rollouts ativos e tags sem próximo passo retornam `{"result":"skip"}`.
+- Tag percorre a mesma escada de imagens, grava o tag inicial no CSA, não aumenta acima dele e sincroniza limites de CPU no Deployment quando recebe `update_cpu`.
+- A avaliação consulta CPU atual e baseline quando o cenário habilita `adapt_cpu`; isso permite escolher também a redução de CPU em carga baixa.
+- Os manifests da API adicionam somente a regra RBAC `pods/resize: patch`. Runtime e API permanecem em Pods separados; não houve alteração no operador, runtime externo, ConfigMap ou `run_tests.sh`.
+
+### Testes e comandos
+
+O teste Java da rota de CPU falhou antes de sua implementação e voltou a falhar quando ela foi temporariamente removida. O teste de tag falha quando a rota é removida. A suíte também verifica chamadas HTTP ao Kubernetes simulado, limites, baseline persistido, atualização de Deployment e sincronização de CPU.
+
+```sh
+GRADLE_USER_HOME=/tmp/csa-java-http-gradle-home ./gradlew test --no-daemon
+git diff --check
+```
+
+A suíte Gradle passou. As chamadas usam um servidor HTTP local simulado; não houve acesso ao cluster, publicação de imagens nem alteração em `run_tests.sh`.
+
+## Validação funcional dos callbacks no cluster
+
+Em 2026-10-14, a API Java foi publicada temporariamente como `registry.k8s.lab/csa-znn-java-http:functional-test-3e9d31e308`, executada pelo operador e acessada pelo Service `csa-java-http-api`. Foi aplicado somente o CustomSelfAdapter da API, sem iniciar o Pod do runtime genérico.
+
+O estado inicial observado era kube-znn com uma réplica, imagem `registry.k8s.lab/znn:600k` e limite de CPU `750m` nos containers znn e nginx. Para testar a variação de CPU de forma observável, o initialData do Pod temporário foi semeado com baseline sintético de `600m` e tag `600k`; o Pod foi removido ao final.
+
+| Chamada no Service | Resultado observado |
+| --- | --- |
+| `GET /actuator/health/readiness` e `POST /metric` com payload runtime-shaped | HTTP 200, status UP e valores preservados |
+| `POST /evaluate` com razão `0.85` | HTTP 200, estratégia `adapt_cpu`, multiplicador `0.85` |
+| `POST /adapt/cpu` | resize real para `638m`; multiplicador `1.2` foi limitado a `750m` |
+| `POST /adapt/tag` com `tag_up=false` e `update_cpu=true` | imagem `600k → 400k`, sincronização de CPU e rollout concluído |
+| `POST /adapt/tag` com `tag_up=true` e `update_cpu=true` | imagem e template restaurados para `600k` e `750m`; rollout concluído |
+| `POST /evaluate` com razão `0.94` | HTTP 204 sem corpo |
+| `POST /adapt/tag` acima do tag inicial | `{"result":"skip"}` |
+| `POST /adapt/replicas` | duas réplicas ficaram Ready; em seguida retornou a uma |
+
+Comandos principais executados a partir da raiz do worktree:
+
+```sh
+docker build --build-arg PROFILE=vq -t registry.k8s.lab/csa-znn-java-http:functional-test-3e9d31e308 autoscalers/csa-java-http
+docker push registry.k8s.lab/csa-znn-java-http:functional-test-3e9d31e308
+kubectl apply -f autoscalers/csa-java-http/service.yaml
+kubectl apply --dry-run=server -f /tmp/csa-java-http-functional-test.yaml
+kubectl apply -f /tmp/csa-java-http-functional-test.yaml
+kubectl port-forward --address 127.0.0.1 service/csa-java-http-api 18082:8080 -n default
+curl -i -H 'Content-Type: application/json' -X POST --data-raw '{"evaluation":{"strategy":"adapt_cpu","parameters":{"cpu_multiplier":0.85}}}' http://127.0.0.1:18082/adapt/cpu
+kubectl rollout status deployment/kube-znn -n default --timeout=180s
+kubectl delete customselfadapter csa-znn-java-http -n default
+kubectl delete service csa-java-http-api -n default
+```
+
+O Deployment foi confirmado restaurado (`1` réplica, imagem `600k`, CPU `750m` em znn/nginx). Os recursos temporários da API foram removidos. A métrica externa estava sem amostras (`items: []`); `/metric` foi validado com dados sintéticos no formato recebido do runtime, sem executar o ciclo do runtime genérico nem um teste de carga.
+
+A imagem local foi removida. A tag temporária permanece no registry interno porque a tentativa de exclusão via API do registry respondeu HTTP 500. Nenhuma alteração foi feita no runtime, operador ou `run_tests.sh`.
