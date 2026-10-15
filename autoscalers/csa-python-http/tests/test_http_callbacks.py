@@ -1,0 +1,159 @@
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import adapt_replicas
+import main
+from metrics import MetricSnapshot
+
+
+def test_metric_callback_uses_runtime_metric_payload(monkeypatch):
+    monkeypatch.setattr(
+        main.metrics,
+        "collect_metrics",
+        lambda _spec: MetricSnapshot(
+            current_replicas=2,
+            current_metric_value=950000,
+            target_metric_value=1000,
+            raw_current_metric_value="950000",
+            raw_target_metric_value="1000",
+        ),
+    )
+
+    result = _endpoint("/metric")({"resource": {}, "kubernetesMetrics": []})
+
+    assert result == {
+        "current_replicas": 2,
+        "target_value": "1000",
+        "current_value": "950000",
+    }
+
+
+def test_evaluate_callback_returns_runtime_evaluation_contract(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "load_profile",
+        lambda: {
+            "enabled_strategies": ["adapt_replicas"],
+            "minReplicas": 1,
+            "maxReplicas": 5,
+            "maxCPU": 750,
+        },
+    )
+    spec = {
+        "resource": {"spec": {"replicas": 2}},
+        "metrics": [
+            {"value": json.dumps({"current_value": "950000", "target_value": "1000"})}
+        ],
+    }
+
+    result = _endpoint("/evaluate")(spec)
+
+    assert result.status_code == 200
+    assert json.loads(result.body) == {
+        "strategy": "adapt_replicas",
+        "parameters": {"replicas": 2},
+    }
+
+
+def test_evaluate_returns_no_content_when_no_adaptation_is_selected(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "load_profile",
+        lambda: {"enabled_strategies": ["adapt_replicas"], "minReplicas": 1, "maxReplicas": 5},
+    )
+    spec = {
+        "resource": {"spec": {"replicas": 2}},
+        "metrics": [
+            {"value": json.dumps({"current_value": "940000", "target_value": "1000"})}
+        ],
+    }
+
+    result = _endpoint("/evaluate")(spec)
+
+    assert result.status_code == 204
+    assert result.body == b""
+
+
+def test_replica_callback_applies_the_evaluated_replica_count(monkeypatch):
+    calls = []
+
+    def apply_replicas(replicas):
+        calls.append(replicas)
+        return {"replicas": replicas}
+
+    monkeypatch.setattr(adapt_replicas, "adapt_replicas", apply_replicas)
+    spec = {"evaluation": {"parameters": {"replicas": 4}}}
+
+    result = _endpoint("/adapt/replicas")(spec)
+
+    assert result == {"replicas": 4}
+    assert calls == [4]
+
+
+def test_cpu_callback_applies_the_evaluated_multiplier(monkeypatch):
+    calls = []
+
+    def apply_cpu(multiplier, max_cpu):
+        calls.append((multiplier, max_cpu))
+        return {"cpu": 650}
+
+    assert hasattr(main, "adapt_cpu"), "CPU adaptation module is not wired"
+    monkeypatch.setattr(main.adapt_cpu, "adapt_cpu", apply_cpu)
+    monkeypatch.setattr(main, "load_profile", lambda: {"maxCPU": 750})
+
+    result = _endpoint("/adapt/cpu")(
+        {"evaluation": {"parameters": {"cpu_multiplier": 1.3}}}
+    )
+
+    assert result == {"cpu": 650}
+    assert calls == [(1.3, 750)]
+
+
+def test_tag_callback_applies_evaluated_direction_and_cpu_update(monkeypatch):
+    calls = []
+
+    def apply_tag(tag_up, update_cpu):
+        calls.append((tag_up, update_cpu))
+        return {"tag": "400k"}
+
+    monkeypatch.setattr(main.adapt_tag, "adapt_tag", apply_tag)
+
+    result = _endpoint("/adapt/tag")(
+        {"evaluation": {"parameters": {"tag_up": False, "update_cpu": True}}}
+    )
+
+    assert result == {"tag": "400k"}
+    assert calls == [(False, True)]
+
+
+def test_evaluate_uses_live_cpu_state_for_cpu_scale_down(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "load_profile",
+        lambda: {"enabled_strategies": ["adapt_cpu"], "minReplicas": 1, "maxReplicas": 5, "maxCPU": 750},
+    )
+    monkeypatch.setattr(main.adapt_cpu, "cpu_state", lambda: (600, 500))
+    spec = {
+        "resource": {"spec": {"replicas": 1}},
+        "metrics": [
+            {"value": json.dumps({"current_value": "850000", "target_value": "1000"})}
+        ],
+    }
+
+    result = _endpoint("/evaluate")(spec)
+
+    assert result.status_code == 200
+    assert json.loads(result.body) == {
+        "strategy": "adapt_cpu",
+        "parameters": {"cpu_multiplier": 0.85},
+    }
+
+
+def _endpoint(path):
+    for route in main.app.routes:
+        if getattr(route, "path", None) == path:
+            return route.endpoint
+    raise AssertionError(f"HTTP callback route {path} is missing")
