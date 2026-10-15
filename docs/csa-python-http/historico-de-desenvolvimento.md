@@ -322,3 +322,60 @@ GOCACHE=/tmp/csa-runtime-204-probe/gocache GOSUMDB=off GOPROXY=off go test -over
 ```
 
 O teste passou ao confirmar que os dois protocolos falham da mesma forma. Isso mostra que o problema não é exclusivo das APIs HTTP; também há registro de erro para stdout vazio no caminho shell durante carga em [`docs/csa-go/execucao-carga.md`](../csa-go/execucao-carga.md). Nenhum cluster, `run_tests.sh`, arquivo do runtime ou operador foi alterado nesta verificação. A validação prática posterior deve observar esse ciclo no runtime implantado.
+
+## Adaptações de CPU e tag
+
+### Decisões
+
+- Foram adicionados os callbacks `/adapt/cpu` e `/adapt/tag`, cada um ligado a um módulo próprio. `adapt_state.py` compartilha o acesso ao Deployment, Pods, baseline e status `initialData`.
+- CPU lê o multiplicador da avaliação, arredonda como a versão shell, limita o resultado entre baseline e `maxCPU` e envia `pods/resize` para os containers `znn` e `nginx`. Rollouts ativos e tags sem próximo passo retornam `{"result":"skip"}`.
+- Tag percorre a mesma escada de imagens, grava o tag inicial no CSA, não aumenta acima dele e sincroniza limites de CPU no Deployment quando recebe `update_cpu`.
+- A avaliação consulta CPU atual e baseline quando o cenário habilita `adapt_cpu`; isso permite escolher também a redução de CPU em carga baixa.
+- Os manifests da API adicionam somente a regra RBAC `pods/resize: patch`. Runtime e API permanecem em Pods separados; não houve alteração no operador, runtime externo, ConfigMap ou `run_tests.sh`.
+
+### Testes e comandos
+
+Os testes de callback falharam quando as rotas não estavam registradas, passaram após a implementação e voltaram a falhar quando as rotas foram temporariamente removidas. Os testes unitários verificam limites de CPU, rollout, payloads de resize, persistência de `initialData`, mudança de tag e sincronização de CPU.
+
+```sh
+.venv/bin/python -m pytest autoscalers/csa-python-http/tests -q
+git diff --check
+```
+
+Resultado final: `27 passed`. Os testes usam clientes simulados; não foram publicadas imagens nem aplicados manifests no cluster.
+
+## Validação funcional dos callbacks no cluster
+
+Em 2026-10-14, a API Python foi publicada com a tag temporária `registry.k8s.lab/csa-python-http:functional-test-9103c55966` e executada como Pod gerenciado pelo operador. O Service `csa-python-http-api` foi aplicado separadamente. A validação usou apenas o CustomSelfAdapter da API, sem criar o Pod do runtime genérico.
+
+O estado inicial observado no cluster era kube-znn com uma réplica, imagem `registry.k8s.lab/znn:600k` e limite de CPU `750m` nos containers znn e nginx. Para exercitar uma redução real de CPU, o initialData do Pod temporário foi semeado com baseline sintético de `600m` e tag `600k`; esse dado foi removido junto com o Pod de teste.
+
+| Chamada no Service | Resultado observado |
+| --- | --- |
+| `GET /health` | HTTP 200, status UP |
+| `POST /metric` com payload de métricas no formato do runtime | HTTP 200, current value `850000`, target `1000` |
+| `POST /evaluate` com razão `0.85` | HTTP 200, estratégia `adapt_cpu`, multiplicador `0.85` |
+| `POST /adapt/cpu` | resize real de znn/nginx para `638m`; multiplicador `1.2` depois foi limitado a `750m` |
+| `POST /adapt/tag` com `tag_up=false` e `update_cpu=true` | imagem `600k → 400k`, rollout concluído e CPU `638m` sincronizada no template |
+| `POST /adapt/tag` com `tag_up=true` e `update_cpu=true` | imagem e template restaurados para `600k` e `750m`; rollout concluído |
+| `POST /evaluate` com razão `0.94` | HTTP 204 sem corpo na faixa sem decisão |
+| `POST /adapt/replicas` | duas réplicas ficaram Ready; em seguida retornou a uma |
+
+Comandos principais executados a partir da raiz do worktree:
+
+```sh
+docker build --build-arg PROFILE=vq -t registry.k8s.lab/csa-python-http:functional-test-9103c55966 autoscalers/csa-python-http
+docker push registry.k8s.lab/csa-python-http:functional-test-9103c55966
+kubectl apply -f autoscalers/csa-python-http/service.yaml
+kubectl apply --dry-run=server -f /tmp/csa-python-http-functional-test.yaml
+kubectl apply -f /tmp/csa-python-http-functional-test.yaml
+kubectl port-forward --address 127.0.0.1 service/csa-python-http-api 18080:8080 -n default
+curl -i -H 'Content-Type: application/json' -X POST --data-raw '{"evaluation":{"strategy":"adapt_cpu","parameters":{"cpu_multiplier":0.85}}}' http://127.0.0.1:18080/adapt/cpu
+kubectl rollout status deployment/kube-znn -n default --timeout=180s
+kubectl delete customselfadapter csa-znn-python-http -n default
+kubectl delete service csa-python-http-api -n default
+```
+
+O Deployment foi confirmado restaurado ao estado inicial (`1` réplica, `600k`, `750m` nos dois containers). O Service e o CustomSelfAdapter temporários foram excluídos, e o operador removeu o Pod/RBAC correspondente. A métrica externa estava sem amostras (`items: []`); por isso o callback de métrica recebeu entrada sintética no formato do runtime e não foi iniciado um ciclo real do runtime. Nenhum teste de carga nem `run_tests.sh` foi executado.
+
+A imagem local foi removida. A tag temporária permanece no registry interno: a tentativa de excluir o manifest via API do registry respondeu HTTP 500. Não foi alterado o runtime, operador ou outro repositório.

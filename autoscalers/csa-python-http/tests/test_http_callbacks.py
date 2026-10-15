@@ -93,6 +93,65 @@ def test_replica_callback_applies_the_evaluated_replica_count(monkeypatch):
     assert calls == [4]
 
 
+def test_cpu_callback_applies_the_evaluated_multiplier(monkeypatch):
+    calls = []
+
+    def apply_cpu(multiplier, max_cpu):
+        calls.append((multiplier, max_cpu))
+        return {"cpu": 650}
+
+    assert hasattr(main, "adapt_cpu"), "CPU adaptation module is not wired"
+    monkeypatch.setattr(main.adapt_cpu, "adapt_cpu", apply_cpu)
+    monkeypatch.setattr(main, "load_profile", lambda: {"maxCPU": 750})
+
+    result = _endpoint("/adapt/cpu")(
+        {"evaluation": {"parameters": {"cpu_multiplier": 1.3}}}
+    )
+
+    assert result == {"cpu": 650}
+    assert calls == [(1.3, 750)]
+
+
+def test_tag_callback_applies_evaluated_direction_and_cpu_update(monkeypatch):
+    calls = []
+
+    def apply_tag(tag_up, update_cpu):
+        calls.append((tag_up, update_cpu))
+        return {"tag": "400k"}
+
+    monkeypatch.setattr(main.adapt_tag, "adapt_tag", apply_tag)
+
+    result = _endpoint("/adapt/tag")(
+        {"evaluation": {"parameters": {"tag_up": False, "update_cpu": True}}}
+    )
+
+    assert result == {"tag": "400k"}
+    assert calls == [(False, True)]
+
+
+def test_evaluate_uses_live_cpu_state_for_cpu_scale_down(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "load_profile",
+        lambda: {"enabled_strategies": ["adapt_cpu"], "minReplicas": 1, "maxReplicas": 5, "maxCPU": 750},
+    )
+    monkeypatch.setattr(main.adapt_cpu, "cpu_state", lambda: (600, 500))
+    spec = {
+        "resource": {"spec": {"replicas": 1}},
+        "metrics": [
+            {"value": json.dumps({"current_value": "850000", "target_value": "1000"})}
+        ],
+    }
+
+    result = _endpoint("/evaluate")(spec)
+
+    assert result.status_code == 200
+    assert json.loads(result.body) == {
+        "strategy": "adapt_cpu",
+        "parameters": {"cpu_multiplier": 0.85},
+    }
+
+
 def _endpoint(path):
     for route in main.app.routes:
         if getattr(route, "path", None) == path:

@@ -7,7 +7,7 @@ ARG PROFILE=vq
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py metrics.py evaluate.py adapt_replicas.py ./
+COPY main.py metrics.py evaluate.py adapt_state.py adapt_replicas.py adapt_cpu.py adapt_tag.py ./
 COPY profiles/${PROFILE}.yaml /config.yaml
 
 EXPOSE 8080
