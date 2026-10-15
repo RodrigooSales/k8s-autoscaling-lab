@@ -1,0 +1,73 @@
+apiVersion: custom-self-adapter.net/v1
+kind: CustomSelfAdapter
+metadata:
+  namespace: default
+  name: csa-znn-java-http
+spec:
+  template:
+    spec:
+      nodeSelector:
+        autoscaling.lab/adaptation: "yes"
+      containers:
+        - name: csa-java-http
+          image: registry.k8s.lab/csa-znn-java-http:vq
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "128m"
+              memory: "256Mi"
+            limits:
+              cpu: "1024m"
+              memory: "1024Mi"
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kube-znn
+  roleRequiresMetricsServer: false
+  additionalRoleRules:
+    - apiGroups: [""]
+      resources:
+        - "pods/resize"
+      verbs:
+        - "patch"
+---
+apiVersion: custom-self-adapter.net/v1
+kind: CustomSelfAdapter
+metadata:
+  namespace: default
+  name: csa-znn-java-http-runtime
+spec:
+  template:
+    spec:
+      nodeSelector:
+        autoscaling.lab/adaptation: "yes"
+      containers:
+        - name: custom-self-adapter
+          image: registry.k8s.lab/csa-znn-java-http-runtime:vq
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "128m"
+              memory: "128Mi"
+            limits:
+              cpu: "1024m"
+              memory: "1024Mi"
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kube-znn
+  roleRequiresMetricsServer: true

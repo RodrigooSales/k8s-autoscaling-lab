@@ -1,0 +1,67 @@
+metric:
+  type: http
+  timeout: 1000
+  http:
+    method: POST
+    url: http://csa-java-http-api:8080/metric
+    headers:
+      Content-Type: application/json
+    successCodes: [200]
+    parameterMode: body
+evaluate:
+  type: http
+  timeout: 2000
+  http:
+    method: POST
+    url: http://csa-java-http-api:8080/evaluate
+    headers:
+      Content-Type: application/json
+    successCodes: [200, 204]
+    parameterMode: body
+adapt:
+  adapt_replicas:
+    type: http
+    timeout: 2000
+    http:
+      method: POST
+      url: http://csa-java-http-api:8080/adapt/replicas
+      headers:
+        Content-Type: application/json
+      successCodes: [200]
+      parameterMode: body
+  adapt_tag:
+    type: http
+    timeout: 2000
+    http:
+      method: POST
+      url: http://csa-java-http-api:8080/adapt/tag
+      headers:
+        Content-Type: application/json
+      successCodes: [200]
+      parameterMode: body
+  adapt_cpu:
+    type: http
+    timeout: 2000
+    http:
+      method: POST
+      url: http://csa-java-http-api:8080/adapt/cpu
+      headers:
+        Content-Type: application/json
+      successCodes: [200]
+      parameterMode: body
+interval: 5000
+minReplicas: 1
+maxReplicas: 5
+maxCPU: 750
+kubernetesMetricSpecs:
+  - type: External
+    external:
+      metric:
+        name: znn_latency_ms_p95
+      target:
+        type: Value
+        value: 1000
+enabled_strategies:
+  - adapt_cpu
+requireKubernetesMetrics: true
+logVerbosity: 4
