@@ -348,3 +348,90 @@ GOCACHE=/tmp/csa-runtime-204-probe/gocache GOSUMDB=off GOPROXY=off go test -over
 ```
 
 O teste passou ao confirmar que os dois protocolos falham da mesma forma. Isso mostra que o problema não é exclusivo das APIs HTTP; também há registro de erro para stdout vazio no caminho shell durante carga em [`docs/csa-go/execucao-carga.md`](../csa-go/execucao-carga.md). Nenhum cluster, `run_tests.sh`, arquivo do runtime ou operador foi alterado nesta verificação. A validação prática posterior deve observar esse ciclo no runtime implantado.
+
+## Adaptações de CPU e tag
+
+### Decisões
+
+- Foram adicionados os callbacks `/adapt/cpu` e `/adapt/tag`, cada um em seu arquivo Go. `adapt_state.go` compartilha o acesso ao Deployment, Pods, baseline e status `initialData`.
+- CPU lê o multiplicador da avaliação, arredonda como a versão shell, limita o resultado entre baseline e `maxCPU` e envia `pods/resize` para os containers `znn` e `nginx`. Rollouts ativos e tags sem próximo passo retornam `{"result":"skip"}`.
+- Tag percorre a mesma escada de imagens, grava o tag inicial no CSA, não aumenta acima dele e sincroniza limites de CPU no Deployment quando recebe `update_cpu`.
+- A avaliação consulta CPU atual e baseline quando o cenário habilita `adapt_cpu`; isso permite escolher também a redução de CPU em carga baixa.
+- Os manifests da API adicionam somente a regra RBAC `pods/resize: patch`. Runtime e API permanecem em Pods separados; não houve alteração no operador, runtime externo, ConfigMap ou `run_tests.sh`.
+
+### Testes e comandos
+
+O teste de registro da rota CPU retornou 404 antes da implementação. A rota de tag também retornou 404 quando foi temporariamente removida; após restaurá-la, os testes verificam os parâmetros e o resultado. Testes com cliente Kubernetes simulado cobrem resize, clamps, baseline, sequência de tags, proteção do tag inicial e sincronização de CPU.
+
+```sh
+GOCACHE=/tmp/csa-go-http-gocache GOPROXY=off mise exec -- go test -mod=readonly ./... -count=1
+git diff --check
+```
+
+A suíte Go passou. A execução completa usa um servidor HTTP local de teste e não acessa o cluster. Não foram publicadas imagens nem alterado `run_tests.sh`.
+
+## Validação funcional dos callbacks no cluster
+
+Em 2026-10-14, a API Go foi executada no cluster em um Pod gerenciado pelo operador, com Service aplicado separadamente. Durante o primeiro teste, `/evaluate` retornou 204 para carga baixa e escolheu `adapt_replicas` na carga alta, embora o profile VQ habilite CPU e tag. A causa foi o uso de tags `yaml` em uma struct decodificada por `sigs.k8s.io/yaml`; o parser ignorava `enabled_strategies` e aplicava o default. As tags da struct foram alinhadas às tags `json`, e `TestLoadRuntimeProfileReadsEnabledStrategies` reproduziu RED, passou GREEN e voltou a falhar quando a correção foi removida.
+
+O reteste então revelou HTTP 500 ao ler initialData: a chamada GET usava o recurso CustomSelfAdapter principal, mas o Role concedido pelo operador autoriza `get` somente em `customselfadapters/status`. `initialData` passou a usar o subrecurso status; `TestInitialDataReadsCustomSelfAdapterStatusSubresource` registrou o subrecurso, passou com a correção e voltou a falhar sem ela.
+
+O estado original observado era kube-znn com uma réplica, imagem `registry.k8s.lab/znn:600k` e limites `750m` em znn/nginx. O Pod temporário recebeu baseline sintético `cpu_limit=600` e `tag=600k` para exercitar resize abaixo do limite atual sem alterar o baseline do workload.
+
+| Chamada no Service | Resultado observado na imagem final corrigida |
+| --- | --- |
+| `GET /health` e `POST /metric` com payload do runtime | HTTP 200 |
+| `POST /evaluate` com razão `0.85` | HTTP 200, estratégia `adapt_cpu`, multiplicador `0.85` |
+| `POST /adapt/cpu` | resize real para `638m`; multiplicador `1.2` foi limitado a `750m` |
+| `POST /adapt/tag` com `tag_up=false` e `update_cpu=true` | imagem `600k → 400k`, sincronização de CPU e rollout concluído |
+| `POST /adapt/tag` com `tag_up=true` e `update_cpu=true` | imagem/template restaurados para `600k`/`750m`, rollout concluído |
+| `POST /evaluate` com razão `0.94` | HTTP 204 sem corpo |
+| `POST /adapt/tag` acima do tag inicial | `{"result":"skip"}` |
+| `POST /adapt/replicas` | duas réplicas ficaram Ready; em seguida retornou a uma |
+
+Comandos principais:
+
+```sh
+GOCACHE=/tmp/csa-go-http-gocache GOPROXY=off mise exec -- go test -mod=readonly ./... -count=1
+docker build --build-arg TAG=vq -t registry.k8s.lab/csa-znn-go-http:functional-test-fbcde6e834-statusfix autoscalers/csa-go-http
+docker push registry.k8s.lab/csa-znn-go-http:functional-test-fbcde6e834-statusfix
+kubectl apply -f autoscalers/csa-go-http/service.yaml
+kubectl apply --dry-run=server -f /tmp/csa-go-http-functional-test.yaml
+kubectl apply -f /tmp/csa-go-http-functional-test.yaml
+kubectl port-forward --address 127.0.0.1 service/csa-go-http-api 18081:8080 -n default
+curl -i -H 'Content-Type: application/json' -X POST --data-raw '{"evaluation":{"strategy":"adapt_cpu","parameters":{"cpu_multiplier":0.85}}}' http://127.0.0.1:18081/adapt/cpu
+kubectl rollout status deployment/kube-znn -n default --timeout=180s
+kubectl delete customselfadapter csa-znn-go-http -n default
+kubectl delete service csa-go-http-api -n default
+```
+
+O Deployment voltou ao estado observado antes do teste (`1` réplica, `600k`, `750m` nos dois containers). Os Pods/Services/RBAC temporários foram removidos. A métrica externa não tinha amostras (`items: []`), então `/metric` recebeu um payload sintético compatível com o runtime e o ciclo do runtime genérico não foi iniciado. Nenhum teste de carga ou `run_tests.sh` foi executado.
+
+As imagens locais foram removidas. Permanecem no registry interno as tags temporárias `functional-test-fbcde6e834`, `functional-test-fbcde6e834-profilefix` e `functional-test-fbcde6e834-statusfix`; a API de exclusão do registry respondeu HTTP 500. A última tag é a imagem Go corrigida usada no reteste final. Não houve alteração no runtime, operador ou outro repositório.
+
+## Demonstração da separação entre runtime e API no cluster
+
+Em 2026-10-14, foi publicado o profile `h` no contexto `kubernetes-admin@kubernetes`, namespace `default`, para mostrar os Pods criados pelos dois recursos `CustomSelfAdapter`. A API usou a imagem Go corrigida já validada; o runtime foi construído com o profile `h` e recebeu uma tag temporária própria. O Service `csa-go-http-api` foi aplicado separadamente.
+
+| Recurso | Pod observado | Imagem |
+| --- | --- | --- |
+| `csa-znn-go-http` | `csa-znn-go-http` | `registry.k8s.lab/csa-znn-go-http:functional-test-fbcde6e834-statusfix` |
+| `csa-znn-go-http-runtime` | `csa-znn-go-http-runtime` | `registry.k8s.lab/csa-znn-go-http-runtime:cluster-demo-20261014` |
+| Service `csa-go-http-api` | endpoint `172.16.140.74:8080` para o Pod da API | — |
+
+Os dois Pods ficaram `Running` e `Ready`. O runtime consultou o Prometheus Adapter, que respondeu `items: []`; o log registrou `no metrics returned` e o ciclo encerrou sem avaliar ou adaptar. O Deployment `kube-znn` permaneceu com uma réplica e a imagem `600k`. Os recursos foram deixados ativos para inspeção. Nenhum teste de carga foi executado.
+
+Comandos principais:
+
+```sh
+docker build --build-arg PROFILE=h -f runtime.Dockerfile -t registry.k8s.lab/csa-znn-go-http-runtime:cluster-demo-20261014 .
+docker push registry.k8s.lab/csa-znn-go-http-runtime:cluster-demo-20261014
+kubectl apply --dry-run=server -f /tmp/csa-go-http-cluster-demo.yaml
+kubectl apply -f autoscalers/csa-go-http/service.yaml
+kubectl apply -f /tmp/csa-go-http-cluster-demo.yaml
+kubectl get pods -n default -o wide
+kubectl get endpoints csa-go-http-api -n default -o wide
+kubectl logs csa-znn-go-http-runtime -n default --tail=40
+```
+
+O arquivo temporário aplicado substituiu as imagens padrão `:h` pelas tags de demonstração; os manifests versionados não foram alterados para apontar para essas tags. A imagem do runtime permanece no registry interno para que o Pod continue disponível.

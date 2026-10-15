@@ -39,6 +39,12 @@ spec:
     kind: Deployment
     name: kube-znn
   roleRequiresMetricsServer: false
+  additionalRoleRules:
+    - apiGroups: [""]
+      resources:
+        - "pods/resize"
+      verbs:
+        - "patch"
 ---
 apiVersion: custom-self-adapter.net/v1
 kind: CustomSelfAdapter

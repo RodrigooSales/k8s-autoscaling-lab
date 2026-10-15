@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -92,13 +94,29 @@ func TestEvaluateCallbackReturnsDecisionOrNoContent(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeProfileReadsEnabledStrategies(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "profile.yaml")
+	profileYAML := []byte("minReplicas: 1\nmaxReplicas: 5\nmaxCPU: 750\nenabled_strategies:\n  - adapt_cpu\n  - adapt_tag\n")
+	if err := os.WriteFile(path, profileYAML, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	profile, err := loadRuntimeProfile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(profile.EnabledStrategies, ","); got != "adapt_cpu,adapt_tag" {
+		t.Fatalf("enabled strategies = %q, want %q", got, "adapt_cpu,adapt_tag")
+	}
+}
+
 func TestReplicaCallback(t *testing.T) {
 	var adapted int32
 	profile := runtimeProfile{MinReplicas: 1, MaxReplicas: 5, EnabledStrategies: []string{strategyReplicas}}
-	handler := newHTTPHandler(profile, func(_ context.Context, replicas int32) error {
+	handler := newHTTPHandler(profile, adaptationCallbacks{adaptReplicas: func(_ context.Context, replicas int32) error {
 		adapted = replicas
 		return nil
-	})
+	}})
 	request := httptest.NewRequest(http.MethodPost, "/adapt/replicas", strings.NewReader(`{"evaluation":{"parameters":{"replicas":4}}}`))
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -108,12 +126,74 @@ func TestReplicaCallback(t *testing.T) {
 
 }
 
+func TestCPUCallbackUsesEvaluationMultiplierAndProfileLimit(t *testing.T) {
+	var multiplier float64
+	var maximum int64
+	callbacks := adaptationCallbacks{adaptCPU: func(_ context.Context, actualMultiplier float64, actualMaximum int64) (map[string]any, error) {
+		multiplier, maximum = actualMultiplier, actualMaximum
+		return map[string]any{"cpu": 650}, nil
+	}}
+	handler := newHTTPHandler(runtimeProfile{MaxCPU: 750}, callbacks)
+	request := httptest.NewRequest(http.MethodPost, "/adapt/cpu", strings.NewReader(`{"evaluation":{"parameters":{"cpu_multiplier":1.3}}}`))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || response.Body.String() != "{\"cpu\":650}\n" {
+		t.Fatalf("CPU callback = status %d, body %q", response.Code, response.Body.String())
+	}
+	if multiplier != 1.3 || maximum != 750 {
+		t.Fatalf("CPU adapter received multiplier %v, max %d", multiplier, maximum)
+	}
+}
+
+func TestTagCallbackUsesEvaluationParameters(t *testing.T) {
+	var tagUp, updateCPU bool
+	callbacks := adaptationCallbacks{adaptTag: func(_ context.Context, actualTagUp, actualUpdateCPU bool) (map[string]any, error) {
+		tagUp, updateCPU = actualTagUp, actualUpdateCPU
+		return map[string]any{"tag": "400k"}, nil
+	}}
+	handler := newHTTPHandler(runtimeProfile{}, callbacks)
+	request := httptest.NewRequest(http.MethodPost, "/adapt/tag", strings.NewReader(`{"evaluation":{"parameters":{"tag_up":false,"update_cpu":true}}}`))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || response.Body.String() != "{\"tag\":\"400k\"}\n" {
+		t.Fatalf("tag callback = status %d, body %q", response.Code, response.Body.String())
+	}
+	if tagUp || !updateCPU {
+		t.Fatalf("tag adapter received tag_up=%v update_cpu=%v", tagUp, updateCPU)
+	}
+}
+
+func TestEvaluateUsesCurrentAndInitialCPUForScaleDown(t *testing.T) {
+	profile := runtimeProfile{MinReplicas: 1, MaxReplicas: 5, MaxCPU: 750, EnabledStrategies: []string{strategyCPU}}
+	callbacks := adaptationCallbacks{cpuState: func(context.Context) (int64, int64, error) { return 600, 500, nil }}
+	handler := newHTTPHandler(profile, callbacks)
+	request := httptest.NewRequest(http.MethodPost, "/evaluate", strings.NewReader(`{"resource":{"spec":{"replicas":1}},"metrics":[{"value":"{\"current_value\":\"850000\",\"target_value\":\"1000\"}"}]}`))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"strategy":"adapt_cpu"`) {
+		t.Fatalf("CPU scale-down evaluation = status %d, body %q", response.Code, response.Body.String())
+	}
+}
+
+func TestCPUCallbackRouteIsRegistered(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/adapt/cpu", strings.NewReader(`{"evaluation":{"parameters":{"cpu_multiplier":1.2}}}`))
+	response := httptest.NewRecorder()
+	testHTTPHandler(nil).ServeHTTP(response, request)
+
+	if response.Code == http.StatusNotFound {
+		t.Fatalf("CPU callback returned %d, route is missing", response.Code)
+	}
+}
+
 func testHTTPHandler(profile *runtimeProfile) http.Handler {
 	configuration := runtimeProfile{MinReplicas: 1, MaxReplicas: 5, MaxCPU: 750, EnabledStrategies: []string{strategyReplicas}}
 	if profile != nil {
 		configuration = *profile
 	}
-	return newHTTPHandler(configuration, func(context.Context, int32) error { return nil })
+	return newHTTPHandler(configuration, adaptationCallbacks{adaptReplicas: func(context.Context, int32) error { return nil }})
 }
 
 func jsonEqual(left, right any) bool {
